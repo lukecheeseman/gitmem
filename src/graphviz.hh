@@ -24,6 +24,7 @@ namespace gitmem {
       void emitProgramOrderEdge(const Node* from, const Node* to);
       void emitReadFromEdge(const Node* from, const Node* to);
       void emitFillColor(const Node* n, const std::string& color);
+      void emitShape(const Node* n, const std::string& shape);
       void emitConflictEdge(const Node* from, const Node* to);
       void emitSyncEdge(const Node* from, const Node* to);
       void emitConflict(const Node* n, const Conflict& conflict);

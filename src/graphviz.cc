@@ -45,8 +45,13 @@ namespace graph {
     file << "\t" << (size_t)n << "[fillcolor = " << color << "];" << std::endl;
   }
 
+  void GraphvizPrinter::emitShape(const Node* n, const std::string& shape) {
+    file << "\t" << (size_t)n << "[shape = " << shape << "];" << std::endl;
+  }
+
   void GraphvizPrinter::emitConflict(const Node* n, const Conflict& conflict) {
     emitFillColor(n, "red");
+    // emitShape(n, "doubleoctagon");
     auto [s1, s2] = conflict.sources;
     emitConflictEdge(n, s1.get());
     emitConflictEdge(n, s2.get());
@@ -138,6 +143,7 @@ namespace graph {
   void GraphvizPrinter::visitAssertionFailure(const AssertionFailure* n) {
     emitNode(n, "Assert " + n->cond);
     emitFillColor(n, "red");
+    // emitShape(n, "doubleoctagon");
     emitProgramOrderEdge(n, n->next.get());
     visitProgramOrder(n->next.get());
   }

@@ -443,7 +443,7 @@ namespace gitmem
             if (auto term = std::get_if<TerminationStatus>(&delta_or_term))
             {
                 thread->terminated = *term;
-                thread_append_node<graph::End>(ctx);
+                // thread_append_node<graph::End>(ctx);
                 return *term;
             }
 
