@@ -1,8 +1,10 @@
 #include "lang.hh"
 #include "internal.hh"
 
-namespace gitmem
-{
+namespace gitmem {
+
+namespace lang {
+
   using namespace trieste;
   using namespace trieste::detail;
 
@@ -135,4 +137,7 @@ namespace gitmem
 
     return p;
   }
-}
+
+} // namespace lang
+
+} // namespace gitmem

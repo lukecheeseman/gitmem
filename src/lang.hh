@@ -3,6 +3,9 @@
 
 namespace gitmem
 {
+
+namespace lang {
+
   using namespace trieste;
 
   Reader reader();
@@ -74,4 +77,6 @@ namespace gitmem
   ;
   // clang-format on
 
-}
+} // namespace lang
+
+} // namespace gitmem

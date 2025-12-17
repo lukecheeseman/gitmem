@@ -14,6 +14,8 @@ FetchContent_MakeAvailable(trieste)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+include_directories(src)
+
 add_executable(gitmem
   src/gitmem.cc
   src/reader.cc

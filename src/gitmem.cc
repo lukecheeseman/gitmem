@@ -58,7 +58,7 @@ int main(int argc, char **argv)
             return 1;
         }
 
-        auto reader = gitmem::reader().file(input_path);
+        auto reader = gitmem::lang::reader().file(input_path);
         auto result = reader.read();
 
         if (!result.ok)
@@ -75,7 +75,7 @@ int main(int argc, char **argv)
         gitmem::verbose << "Output will be written to " << output_path << std::endl;
 
         int exit_status;
-        wf::push_back(gitmem::wf);
+        wf::push_back(gitmem::lang::wf);
         if (model_check)
         {
             exit_status = gitmem::model_check(result.ast, output_path);

@@ -5,8 +5,8 @@
 #include "interpreter.hh"
 #include "graphviz.hh"
 
-namespace gitmem
-{
+namespace gitmem {
+
     using namespace trieste;
 
     /* Interpreter for a gitmem program. Threads can read and write local
@@ -25,8 +25,8 @@ namespace gitmem
 
     bool is_syncing(Node stmt)
     {
-        auto s = stmt / Stmt;
-        return s == Join || s == Lock || s == Unlock;
+        auto s = stmt / lang::Stmt;
+        return s == lang::Join || s == lang::Lock || s == lang::Unlock;
     }
 
     bool is_syncing(Thread &thread)
@@ -132,8 +132,8 @@ namespace gitmem
      */
     std::variant<size_t, TerminationStatus> evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx)
     {
-        auto e = expr / Expr;
-        if (e == Reg)
+        auto e = expr / lang::Expr;
+        if (e == lang::Reg)
         {
             // It is invalid to read a previously unwritten value
             auto var = std::string(expr->location().view());
@@ -146,7 +146,7 @@ namespace gitmem
                 return TerminationStatus::unassigned_variable_read_exception;
             }
         }
-        else if (e == Var)
+        else if (e == lang::Var)
         {
             // It is invalid to read a previously unwritten value
             auto var = std::string(expr->location().view());
@@ -163,11 +163,11 @@ namespace gitmem
                 return TerminationStatus::unassigned_variable_read_exception;
             }
         }
-        else if (e == Const)
+        else if (e == lang::Const)
         {
             return size_t(std::stoi(std::string(e->location().view())));
         }
-        else if (e == Add)
+        else if (e == lang::Add)
         {
             size_t sum = 0;
             for (auto &child : *e)
@@ -178,7 +178,7 @@ namespace gitmem
             }
             return sum;
         }
-        else if (e == Spawn)
+        else if (e == lang::Spawn)
         {
             // Spawning is a sync point, commit local pending commits, and
             // copy the global state to the spawned thread
@@ -187,16 +187,16 @@ namespace gitmem
             auto node = std::make_shared<graph::Start>(tid);
 
             ThreadContext new_ctx = { Locals(), ctx.globals, node };
-            gctx.threads.push_back(std::make_shared<Thread>(new_ctx, e / Block));
+            gctx.threads.push_back(std::make_shared<Thread>(new_ctx, e / lang::Block));
 
             thread_append_node<graph::Spawn>(ctx, tid, node);
 
             return tid;
         }
-        else if (e == Eq || e == Neq)
+        else if (e == lang::Eq || e == lang::Neq)
         {
-            auto lhs = e / Lhs;
-            auto rhs = e / Rhs;
+            auto lhs = e / lang::Lhs;
+            auto rhs = e / lang::Rhs;
 
             auto lhsEval = evaluate_expression(lhs, gctx, ctx);
             if (std::holds_alternative<TerminationStatus>(lhsEval)) return lhsEval;
@@ -204,7 +204,7 @@ namespace gitmem
             auto rhsEval = evaluate_expression(rhs, gctx, ctx);
             if (std::holds_alternative<TerminationStatus>(rhsEval)) return rhsEval;
 
-            return e == Eq? (std::get<size_t>(lhsEval)) == (std::get<size_t>(rhsEval))
+            return e == lang::Eq? (std::get<size_t>(lhsEval)) == (std::get<size_t>(rhsEval))
                           : (std::get<size_t>(lhsEval)) != (std::get<size_t>(rhsEval));
         }
         else
@@ -219,22 +219,22 @@ namespace gitmem
      */
     std::variant<int, TerminationStatus> run_statement(Node stmt, GlobalContext &gctx, ThreadContext &ctx, const ThreadID& tid)
     {
-        auto s = stmt / Stmt;
-        if (s == Nop)
+        auto s = stmt / lang::Stmt;
+        if (s == lang::Nop)
         {
             verbose << "Nop" << std::endl;
         }
-        else if (s == Jump)
+        else if (s == lang::Jump)
         {
-            auto cnst = s / Const;
+            auto cnst = s / lang::Const;
             auto delta = std::stoi(std::string(cnst->location().view()));
             assert(delta > 0);
             return delta;
         }
-        else if (s == Cond)
+        else if (s == lang::Cond)
         {
-            auto expr = s / Expr;
-            auto cnst = s / Const;
+            auto expr = s / lang::Expr;
+            auto cnst = s / lang::Const;
             auto result = evaluate_expression(expr, gctx, ctx);
 
             if (auto b = std::get_if<size_t>(&result))
@@ -248,21 +248,21 @@ namespace gitmem
                 return std::get<TerminationStatus>(result);
             }
         }
-        else if (s == Assign)
+        else if (s == lang::Assign)
         {
-            auto lhs = s / LVal;
+            auto lhs = s / lang::LVal;
             auto var = std::string(lhs->location().view());
-            auto rhs = s / Expr;
+            auto rhs = s / lang::Expr;
             auto val_or_term = evaluate_expression(rhs, gctx, ctx);
             if(size_t* val = std::get_if<size_t>(&val_or_term))
             {
-                if (lhs == Reg)
+                if (lhs == lang::Reg)
                 {
                     // Local variables can be re-assigned whenever
                     verbose << "Set register '" << lhs->location().view() << "' to " << *val << std::endl;
                     ctx.locals[var] = *val;
                 }
-                else if (lhs == Var)
+                else if (lhs == lang::Var)
                 {
                     // Global variable writes need to create a new commit id
                     // to track the history of updates
@@ -284,12 +284,12 @@ namespace gitmem
                 return std::get<TerminationStatus>(val_or_term);
             }
         }
-        else if (s == Join)
+        else if (s == lang::Join)
         {
             // A join must waiting for the terminating thread to continue,
             // we don't want to re-evaluate the expression repeatedly as this
             // may be effecting so store the result in the cache.
-            auto expr = s / Expr;
+            auto expr = s / lang::Expr;
 
             if (!gctx.cache.contains(expr))
             {
@@ -332,12 +332,12 @@ namespace gitmem
                 return 0;
             }
         }
-        else if (s == Lock)
+        else if (s == lang::Lock)
         {
             // We can only lock unlocked locks, if a lock hasn't been used
             // before it is implicitly created, we then commit the pending
             // updates of this thread and pull the updates from the lock.
-            auto v = s / Var;
+            auto v = s / lang::Var;
             auto var = std::string(v->location().view());
 
             auto& lock = gctx.locks[var];
@@ -363,14 +363,14 @@ namespace gitmem
             verbose << "Locked " << var << std::endl;
 
         }
-        else if (s == Unlock)
+        else if (s == lang::Unlock)
         {
             // We can only unlock locks we previously locked. We commit any
             // pending updates and then copy the threads versioned globals
             // to the locks versioned globals (nobody could have changed
             // them since we locked the lock).
             commit(ctx.globals);
-            auto v = s / Var;
+            auto v = s / lang::Var;
             auto var = std::string(v->location().view());
 
             auto& lock = gctx.locks[var];
@@ -387,9 +387,9 @@ namespace gitmem
 
             verbose << "Unlocked " << var << std::endl;
         }
-        else if (s == Assert)
+        else if (s == lang::Assert)
         {
-            auto expr = s / Expr;
+            auto expr = s / lang::Expr;
             auto result_or_term = evaluate_expression(expr, gctx, ctx);
             if (size_t* result = std::get_if<size_t>(&result_or_term))
             {
@@ -609,4 +609,5 @@ namespace gitmem
 
         return result;
     }
-}
+
+} // gitmem

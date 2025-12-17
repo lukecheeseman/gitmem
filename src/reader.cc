@@ -2,6 +2,8 @@
 
 namespace gitmem {
 
+namespace lang {
+
 using namespace trieste;
 
 Reader reader()
@@ -14,8 +16,10 @@ Reader reader()
         check_refs(),
         branching(),
       },
-      gitmem::parser(),
+      gitmem::lang::parser(),
     };
   }
 
-}
+} // namespace lang
+
+} // namespace gitmem

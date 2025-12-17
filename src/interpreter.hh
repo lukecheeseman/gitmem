@@ -5,8 +5,8 @@
 #include "graph.hh"
 #include "graphviz.hh"
 
-namespace gitmem
-{
+namespace gitmem {
+
     /* For debug printing */
     inline struct Verbose
     {
@@ -72,7 +72,7 @@ namespace gitmem
     struct Thread
     {
         ThreadContext ctx;
-        Node block;
+        trieste::Node block;
         size_t pc = 0;
         ThreadStatus terminated = std::nullopt;
 
@@ -120,14 +120,14 @@ namespace gitmem
     {
         Threads threads;
         Locks locks;
-        NodeMap<size_t> cache;
+        lang::NodeMap<size_t> cache;
         std::shared_ptr<graph::Node> entry_node;
         std::unordered_map<Commit, std::shared_ptr<graph::Node>> commit_map;
         Commit uuid = 0;
 
-        GlobalContext(const Node &ast)
+        GlobalContext(const trieste::Node &ast)
         {
-            Node starting_block = ast / File / Block;
+            trieste::Node starting_block = ast / lang::File / lang::Block;
             entry_node = std::make_shared<graph::Start>(0);
             ThreadContext starting_ctx = {{}, {}, entry_node};
             auto main_thread = std::make_shared<Thread>(starting_ctx, starting_block);
@@ -174,9 +174,9 @@ namespace gitmem
                 if (t->terminated || dynamic_pointer_cast<const graph::Pending>(t->ctx.tail->next))
                     continue;
 
-                Node block = t->block;
+                trieste::Node block = t->block;
                 size_t &pc = t->pc;
-                Node stmt = block->at(pc);
+                trieste::Node stmt = block->at(pc);
                 thread_append_node<graph::Pending>(t->ctx, std::string(stmt->location().view()));
             }
 
@@ -201,13 +201,14 @@ namespace gitmem
     inline void operator|=(ProgressStatus &p1, const ProgressStatus &p2) { p1 = (p1 || p2); }
 
     // Entry functions
-    int interpret(const Node, const std::filesystem::path &output_file);
-    int interpret_interactive(const Node, const std::filesystem::path &output_file);
-    int model_check(const Node, const std::filesystem::path &output_file);
+    int interpret(const trieste::Node, const std::filesystem::path &output_file);
+    int interpret_interactive(const trieste::Node, const std::filesystem::path &output_file);
+    int model_check(const trieste::Node, const std::filesystem::path &output_file);
 
     // Internal functions
     int run_threads(GlobalContext &);
 
     std::variant<ProgressStatus, TerminationStatus>
     progress_thread(GlobalContext &, const ThreadID, std::shared_ptr<Thread>);
-}
+
+} // namespace gitmem

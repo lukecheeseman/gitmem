@@ -248,7 +248,7 @@ namespace gitmem
                 return false;
             case TerminationStatus::assertion_failure_exception:
             {
-                auto expr = thread->block->at(thread->pc) / Stmt / Expr;
+                auto expr = thread->block->at(thread->pc) / lang::Stmt / lang::Expr;
                 msg = "Thread " + std::to_string(tid) + " failed assertion '" + std::string(expr->location().view()) + "' and was terminated";
                 return false;
             }
@@ -265,7 +265,7 @@ namespace gitmem
 
     /** Interpret the AST in an interactive way, letting the user choose which
      * thread to schedule next. */
-    int interpret_interactive(const Node ast, const std::filesystem::path &output_file)
+    int interpret_interactive(const trieste::Node ast, const std::filesystem::path &output_file)
     {
         GlobalContext gctx(ast);
 

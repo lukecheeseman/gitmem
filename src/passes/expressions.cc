@@ -2,6 +2,9 @@
 
 namespace gitmem
 {
+
+namespace lang {
+
     using namespace trieste;
 
     PassDef expressions()
@@ -136,4 +139,6 @@ namespace gitmem
             }};
     }
 
-}
+} // namespace lang
+
+} // namespace gitmem

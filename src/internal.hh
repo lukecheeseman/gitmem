@@ -1,8 +1,10 @@
 #pragma once
 #include "lang.hh"
 
-namespace gitmem
-{
+namespace gitmem {
+
+namespace lang {
+
   using namespace trieste;
 
   Parse parser();
@@ -83,4 +85,7 @@ namespace gitmem
     | (Cond <<= Expr * Const)
     ;
   // clang-format on
-}
+
+} // namespace lang
+
+} // namespace gitmem

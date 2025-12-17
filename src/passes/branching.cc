@@ -1,7 +1,8 @@
 #include "../internal.hh"
 
-namespace gitmem
-{
+namespace gitmem {
+
+namespace lang {
     using namespace trieste;
 
     PassDef branching()
@@ -28,4 +29,6 @@ namespace gitmem
             }};
     }
 
-}
+} // namespace lang
+
+} // namespace gitmem
