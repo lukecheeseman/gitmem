@@ -4,6 +4,7 @@
 
 #include "interpreter.hh"
 #include "graphviz.hh"
+#include "sync_protocol.hh"
 
 namespace gitmem {
 
@@ -34,77 +35,11 @@ namespace gitmem {
         return !thread.terminated && is_syncing(thread.block->at(thread.pc));
     }
 
-    /* At a commit point, walk through all the versioned variables and see if
-     * they have a pending commit, if so commit the value by appending to
-     * the variables history.
-     */
-    void commit(Globals &globals) {
-        for (auto& [var, global] : globals) {
-            if (global.commit)
-            {
-                global.history.push_back(*global.commit);
-                verbose << "Committed global '" << var << "' with id " << *global.commit << std::endl;
-                global.commit.reset();
-            }
-        }
-    }
-
-
-    /* A versioned value can be fastforwarded to another version, if one
-     * version's history is a prefix of another version's history.
-     * A conflict between two commit histories exists if neither history is a
-     * prefix of the other.
-     */
-    std::optional<std::pair<Commit, Commit>> has_conflict(CommitHistory& h1, CommitHistory& h2)
-    {
-        size_t length = std::min(h1.size(), h2.size());
-
-        for (size_t i = 0; i < length; i++)
-        {
-            if (h1[i] != h2[i]) return std::pair<Commit, Commit>{h1[i], h2[i]};
-        }
-
-        return std::nullopt;
-    }
-
     struct Conflict
     {
         std::string var;
         std::pair<Commit, Commit> commits;
     };
-
-    /* Walk through all the global versions from source and update the versions
-     * in destination to be the most up-to-date version (this could come from
-     * either source or destination). This means destination will now also
-     * include variables it previously did not know about.
-     */
-    std::optional<Conflict> pull(Globals &dst, Globals &src) {
-        for (auto& [var, global] : src) {
-            if (dst.contains(var))
-            {
-                auto& src_var = src[var];
-                auto& dst_var = dst[var];
-                if (auto conflict = has_conflict(src_var.history, dst_var.history))
-                {
-                    auto [s1, s2] = *conflict;
-                    verbose << "A data race on '" << var << "' was detected from commits " << s1 << " and " << s2 << std::endl;
-                    return Conflict(var, *conflict);
-                }
-                else if (src_var.history.size() > dst_var.history.size())
-                {
-                    verbose << "Fast-forward '" << var << "' to id " << src_var.val << std::endl;
-                    dst_var.val = src_var.val;
-                    dst_var.history = src_var.history;
-                }
-            }
-            else
-            {
-                dst[var].val = src[var].val;
-                dst[var].history = src[var].history;
-            }
-        }
-        return std::nullopt;
-    }
 
     template<typename T, typename...Args>
     std::shared_ptr<T> thread_append_node(ThreadContext& ctx, Args&&...args)
@@ -130,8 +65,7 @@ namespace gitmem {
     /* Evaluating an expression either returns the result of the expression or
      * a the exceptional termination status of the thread.
      */
-    std::variant<size_t, TerminationStatus> evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx)
-    {
+    std::variant<size_t, TerminationStatus> evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
         auto e = expr / lang::Expr;
         if (e == lang::Reg)
         {
@@ -148,18 +82,10 @@ namespace gitmem {
         }
         else if (e == lang::Var)
         {
-            // It is invalid to read a previously unwritten value
             auto var = std::string(expr->location().view());
-            if (ctx.globals.contains(var))
-            {
-                auto& global = ctx.globals[var];
-                auto commit = global.commit.value_or(global.history.back());
-                auto source_node = gctx.commit_map[commit];
-                thread_append_node<graph::Read>(ctx, var, global.val, commit, source_node);
-                return global.val;
-            }
-            else
-            {
+            if (std::optional<size_t> result = gctx.protocol->read(ctx, var) ) {
+                return *result;
+            } else { // It is invalid to read a previously unwritten value
                 return TerminationStatus::unassigned_variable_read_exception;
             }
         }
@@ -180,16 +106,19 @@ namespace gitmem {
         }
         else if (e == lang::Spawn)
         {
-            // Spawning is a sync point, commit local pending commits, and
-            // copy the global state to the spawned thread
-            commit(ctx.globals);
             ThreadID tid = gctx.threads.size();
             auto node = std::make_shared<graph::Start>(tid);
-
-            ThreadContext new_ctx = { Locals(), ctx.globals, node };
-            gctx.threads.push_back(std::make_shared<Thread>(new_ctx, e / lang::Block));
-
+            ThreadContext child_ctx = { Locals(), node };
+            gctx.threads.push_back(std::make_shared<Thread>(child_ctx, e / lang::Block));
             thread_append_node<graph::Spawn>(ctx, tid, node);
+
+            if (std::optional<Conflict> conflict = gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
+                assert(false); // handle this
+            }
+
+            // Spawning is a sync point, commit local pending commits, and
+            // copy the global state to the spawned thread
+            // commit(ctx.globals);
 
             return tid;
         }
@@ -264,15 +193,17 @@ namespace gitmem {
                 }
                 else if (lhs == lang::Var)
                 {
-                    // Global variable writes need to create a new commit id
-                    // to track the history of updates
-                    auto &global = ctx.globals[var];
-                    global.val = *val;
-                    global.commit = gctx.uuid++;
-                    verbose <<  "Set global '" << lhs->location().view() << "' to " << *val <<  " with id " << *(global.commit) << std::endl;
+                    gctx.protocol->write(ctx, var, *val);
 
-                    auto node = thread_append_node<graph::Write>(ctx, var, global.val, *global.commit);
-                    gctx.commit_map[*(global.commit)] = node;
+                    // // Global variable writes need to create a new commit id
+                    // // to track the history of updates
+                    // auto &global = ctx.globals[var];
+                    // global.val = *val;
+                    // global.commit = gctx.uuid++;
+                    // verbose <<  "Set global '" << lhs->location().view() << "' to " << *val <<  " with id " << *(global.commit) << std::endl;
+
+                    // auto node = thread_append_node<graph::Write>(ctx, var, global.val, *global.commit);
+                    // gctx.commit_map[*(global.commit)] = node;
                 }
                 else
                 {
@@ -308,23 +239,27 @@ namespace gitmem {
             // thread will not necessarily have commited them), we then
             // pull the updates into the joining thread.
             auto result = gctx.cache[expr];
-            auto& thread = gctx.threads[result];
-            if (thread->terminated && (*thread->terminated == TerminationStatus::completed))
+            auto& joinee = gctx.threads[result];
+            if (joinee->terminated && (*joinee->terminated == TerminationStatus::completed))
             {
-                commit(ctx.globals);
-                commit(thread->ctx.globals);
-                verbose << "Pulling from thread " <<  result << std::endl;
-                if(auto conflict = pull(ctx.globals, thread->ctx.globals))
-                {
-                    using graph::Node;
-                    auto [s1, s2] = conflict->commits;
-                    auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
-                    auto graph_conflict = graph::Conflict(conflict->var, sources);
-                    thread_append_node<graph::Join>(ctx, result, thread->ctx.tail, graph_conflict);
+                if(auto conflict = gctx.protocol->on_join(ctx, joinee->ctx, gctx)) {
+                    assert(false && "todo");
                     return TerminationStatus::datarace_exception;
+                } else {
+                    thread_append_node<graph::Join>(ctx, result, joinee->ctx.tail);
                 }
-
-                thread_append_node<graph::Join>(ctx, result, thread->ctx.tail);
+                // commit(ctx.globals);
+                // commit(thread->ctx.globals);
+                // verbose << "Pulling from thread " <<  result << std::endl;
+                // if(auto conflict = pull(ctx.globals, thread->ctx.globals))
+                // {
+                //     using graph::Node;
+                //     auto [s1, s2] = conflict->commits;
+                //     auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
+                //     auto graph_conflict = graph::Conflict(conflict->var, sources);
+                //     thread_append_node<graph::Join>(ctx, result, thread->ctx.tail, graph_conflict);
+                //     return TerminationStatus::datarace_exception;
+                // }
             }
             else
             {
@@ -347,45 +282,48 @@ namespace gitmem {
             }
 
             lock.owner = tid;
-            commit(ctx.globals);
-            if(auto conflict = pull(ctx.globals, lock.globals))
-            {
-                using graph::Node;
-                auto [s1, s2] = conflict->commits;
-                auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
-                auto graph_conflict = graph::Conflict(conflict->var, sources);
-                thread_append_node<graph::Lock>(ctx, var, lock.last, graph_conflict);
-                return TerminationStatus::datarace_exception;
-            }
+            assert(false && "todo");
+            // commit(ctx.globals);
+            // if(auto conflict = pull(ctx.globals, lock.globals))
+            // {
+            //     using graph::Node;
+            //     auto [s1, s2] = conflict->commits;
+            //     auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
+            //     auto graph_conflict = graph::Conflict(conflict->var, sources);
+            //     thread_append_node<graph::Lock>(ctx, var, lock.last, graph_conflict);
+            //     return TerminationStatus::datarace_exception;
+            // }
 
-            thread_append_node<graph::Lock>(ctx, var, lock.last);
+            // thread_append_node<graph::Lock>(ctx, var, lock.last);
 
             verbose << "Locked " << var << std::endl;
 
         }
         else if (s == lang::Unlock)
         {
-            // We can only unlock locks we previously locked. We commit any
-            // pending updates and then copy the threads versioned globals
-            // to the locks versioned globals (nobody could have changed
-            // them since we locked the lock).
-            commit(ctx.globals);
-            auto v = s / lang::Var;
-            auto var = std::string(v->location().view());
+            assert(false && "todo");
 
-            auto& lock = gctx.locks[var];
-            if (!lock.owner || (lock.owner && *lock.owner != tid))
-            {
-                return TerminationStatus::unlock_exception;
-            }
+            // // We can only unlock locks we previously locked. We commit any
+            // // pending updates and then copy the threads versioned globals
+            // // to the locks versioned globals (nobody could have changed
+            // // them since we locked the lock).
+            // commit(ctx.globals);
+            // auto v = s / lang::Var;
+            // auto var = std::string(v->location().view());
 
-            lock.globals = ctx.globals;
-            lock.owner.reset();
+            // auto& lock = gctx.locks[var];
+            // if (!lock.owner || (lock.owner && *lock.owner != tid))
+            // {
+            //     return TerminationStatus::unlock_exception;
+            // }
 
-            thread_append_node<graph::Unlock>(ctx, var);
-            lock.last = ctx.tail;
+            // lock.globals = ctx.globals;
+            // lock.owner.reset();
 
-            verbose << "Unlocked " << var << std::endl;
+            // thread_append_node<graph::Unlock>(ctx, var);
+            // lock.last = ctx.tail;
+
+            // verbose << "Unlocked " << var << std::endl;
         }
         else if (s == lang::Assert)
         {

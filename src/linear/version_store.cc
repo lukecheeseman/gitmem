@@ -1,4 +1,4 @@
-#include "versionstore.hh"
+#include "version_store.hh"
 #include <stdexcept>
 
 namespace gitmem {

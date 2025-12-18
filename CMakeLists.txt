@@ -20,13 +20,14 @@ add_executable(gitmem
   src/gitmem.cc
   src/reader.cc
   src/parser.cc
+  src/execution_state.cc
   src/passes/expressions.cc
   src/passes/statements.cc
   src/passes/check_refs.cc
   src/passes/branching.cc
   src/interpreter.cc
-  src/debugger.cc
-  src/model_checker.cc
+  # src/debugger.cc
+  # src/model_checker.cc
   src/graphviz.cc
 )
 

@@ -78,11 +78,13 @@ int main(int argc, char **argv)
         wf::push_back(gitmem::lang::wf);
         if (model_check)
         {
-            exit_status = gitmem::model_check(result.ast, output_path);
+            assert(false && "currently broken");
+            // exit_status = gitmem::model_check(result.ast, output_path);
         }
         else if (interactive)
         {
-            exit_status = gitmem::interpret_interactive(result.ast, output_path);
+            assert(false && "currently broken");
+            // exit_status = gitmem::interpret_interactive(result.ast, output_path);
         }
         else
         {
