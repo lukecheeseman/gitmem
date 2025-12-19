@@ -9,40 +9,38 @@
 namespace gitmem {
 
   /* For debug printing */
-    inline struct Verbose
-    {
-        bool enabled = false;
+  inline struct Verbose {
+    bool enabled = false;
 
-        template <typename T>
-        const Verbose &operator<<(const T &msg) const
-        {
-            if (enabled)
-            {
-                std::cout << msg;
-            }
-            return *this;
-        }
+    template <typename T>
+    const Verbose &operator<<(const T &msg) const {
+      if (enabled) std::cout << msg;
+      return *this;
+    }
 
-        const Verbose &operator<<(std::ostream &(*manip)(std::ostream &)) const
-        {
-            if (enabled)
-            {
-                std::cout << manip;
-            }
-            return *this;
-        }
-    } verbose;
+    const Verbose &operator<<(std::ostream &(*manip)(std::ostream &)) const {
+        if (enabled) std::cout << manip;
+        return *this;
+    }
+  } verbose;
 
-    // Entry functions
-    int interpret(const trieste::Node, const std::filesystem::path &output_file);
+  // Entry functions
+  int interpret(const trieste::Node, const std::filesystem::path &output_file);
 
-    // int interpret_interactive(const trieste::Node, const std::filesystem::path &output_file);
-    // int model_check(const trieste::Node, const std::filesystem::path &output_file);
+  // int interpret_interactive(const trieste::Node, const std::filesystem::path &output_file);
+  // int model_check(const trieste::Node, const std::filesystem::path &output_file);
 
-    // Internal functions
-    int run_threads(GlobalContext &);
+  // Internal functions
+  int run_threads(GlobalContext &);
 
-    std::variant<ProgressStatus, TerminationStatus>
-    progress_thread(GlobalContext &, const ThreadID, std::shared_ptr<Thread>);
+  enum class ProgressStatus { progress, no_progress };
+  inline bool operator!(ProgressStatus p) { return p == ProgressStatus::no_progress; }
+  inline ProgressStatus operator||(const ProgressStatus &p1, const ProgressStatus &p2) {
+    return (p1 == ProgressStatus::progress || p2 == ProgressStatus::progress) ? ProgressStatus::progress : ProgressStatus::no_progress;
+  }
+  inline void operator|=(ProgressStatus &p1, const ProgressStatus &p2) { p1 = (p1 || p2); }
+
+  std::variant<ProgressStatus, TerminationStatus>
+  progress_thread(GlobalContext &, const ThreadID, std::shared_ptr<Thread>);
 
 } // namespace gitmem

@@ -28,14 +28,27 @@ namespace branching {
 
   using Globals = std::unordered_map<std::string, Global>;
 
-  using Locals = std::unordered_map<std::string, size_t>;
-
-
   struct Conflict
   {
       std::string var;
       std::pair<Commit, Commit> commits;
   };
+
+  struct LocalVersionStore {};
+
+  // Join logic
+            // commit(ctx.globals);
+          // commit(thread->ctx.globals);
+          // verbose << "Pulling from thread " <<  result << std::endl;
+          // if(auto conflict = pull(ctx.globals, thread->ctx.globals))
+          // {
+          //     using graph::Node;
+          //     auto [s1, s2] = conflict->commits;
+          //     auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
+          //     auto graph_conflict = graph::Conflict(conflict->var, sources);
+          //     thread_append_node<graph::Join>(ctx, result, thread->ctx.tail, graph_conflict);
+          //     return TerminationStatus::datarace_exception;
+          // }
 
 } // namespace branching
 

@@ -86,6 +86,7 @@ public:
   void stage(ObjectNumber obj, Value value);
   void clear_staging();
   void advance_base(Timestamp ts);
+  std::optional<Value> get_staged(ObjectNumber obj);
 };
 
 // -----------------------------
@@ -96,11 +97,15 @@ class GlobalVersionStore {
   Timestamp _timestamp{};
   ObjectNumber _next_object{0};
   std::unordered_map<ObjectNumber, VersionHistory> _history;
+  std::unordered_map<std::string, ObjectNumber> _object_numbers;
 
 public:
   Timestamp current_timestamp() const { return _timestamp; }
 
-  ObjectNumber allocate_object();
+  ObjectNumber get_object_number(std::string);
+  std::string get_object_name(ObjectNumber);
+
+  std::optional<Value> get_version_for_timestamp(ObjectNumber, Timestamp) const;
 
   std::optional<Conflict> check_conflicts(
     Timestamp base,
@@ -113,48 +118,6 @@ public:
   );
 };
 
-// -----------------------------
-// Synchronisation Protocol
-// -----------------------------
-
-class GlobalVersionHistory {
-  GlobalVersionStore _global;
-
-public:
-  std::optional<Conflict> push(LocalVersionStore& local);
-  std::optional<Conflict> pull(LocalVersionStore& local);
-};
-
 } // namespace linear
-
-namespace branching {
-
-  /* A 'Global' is a structure to capture the current synchronising objects
-  * representation of a global variable. The structure is the current value,
-  * the current commit id for the variable, and the history of commited ids.
-  */
-
-  using Commit = size_t;
-  using CommitHistory = std::vector<Commit>;
-
-  struct Global
-  {
-      size_t val;
-      std::optional<Commit> commit;
-      CommitHistory history;
-  };
-
-  using Globals = std::unordered_map<std::string, Global>;
-
-  using Locals = std::unordered_map<std::string, size_t>;
-
-
-  struct Conflict
-  {
-      std::string var;
-      std::pair<Commit, Commit> commits;
-  };
-
-} // namespace branching
 
 } // namespace gitmem

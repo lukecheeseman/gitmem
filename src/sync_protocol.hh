@@ -3,10 +3,31 @@
 #include <optional>
 #include <memory>
 #include "execution_state.hh"
+#include "linear/version_store.hh"
+#include "branching/version_store.hh"
+
+/* i want an on_start and on_end event i think too */
 
 namespace gitmem {
 
-struct Conflict;
+struct ConflictBase {
+  virtual ~ConflictBase() = default;
+  virtual std::string name() const = 0;
+};
+
+template<typename VersionID>
+struct Conflict : ConflictBase {
+  std::string var;
+  std::pair<VersionID, VersionID> versions;
+
+  std::string name() const override { return var; }
+
+  Conflict(std::string var, std::pair<VersionID, VersionID> versions):
+    var(std::move(var)), versions(std::move(versions)) {}
+};
+
+using LinearConflict = Conflict<linear::Timestamp>;
+using BranchingConflict = Conflict<branching::Commit>;
 
 class SyncProtocol {
 public:
@@ -18,25 +39,35 @@ public:
   // Write a shared variable (staged, not committed)
   virtual void write(ThreadContext& ctx, const std::string& var, size_t value) = 0;
 
-  virtual std::optional<Conflict> on_spawn(
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_spawn(
     ThreadContext& parent,
     ThreadContext& child,
     GlobalContext& gctx
   ) = 0;
 
-  virtual std::optional<Conflict> on_join(
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_join(
     ThreadContext& joiner,
     ThreadContext& joinee,
     GlobalContext& gctx
   ) = 0;
 
-  virtual std::optional<Conflict> on_lock(
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_start(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) = 0;
+
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_end(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) = 0;
+
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_lock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx
   ) = 0;
 
-  virtual std::optional<Conflict> on_unlock(
+  virtual std::optional<std::unique_ptr<ConflictBase>> on_unlock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx
@@ -48,32 +79,53 @@ public:
 // ---------------------------------
 
 class LinearSyncProtocol final : public SyncProtocol {
-  // std::unordered_map<Timestamp, std::shared_ptr<graph::Node>> ts_nodes;
+  linear::GlobalVersionStore _global_store;
+
+  static linear::LocalVersionStore& store(ThreadContext& ctx) {
+    if (!ctx.linear) ctx.linear.emplace();
+    return ctx.linear->store;
+  }
+
+  std::optional<LinearConflict> push(linear::LocalVersionStore& local);
+  std::optional<LinearConflict> pull(linear::LocalVersionStore& local);
 
 public:
+  ~LinearSyncProtocol() override;
+
+
   std::optional<size_t> read(ThreadContext& ctx, const std::string& var) override;
 
   void write(ThreadContext& ctx, const std::string& var, size_t value) override;
 
-  std::optional<Conflict> on_spawn(
+  std::optional<std::unique_ptr<ConflictBase>> on_spawn(
     ThreadContext& parent,
     ThreadContext& child,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_join(
+  std::optional<std::unique_ptr<ConflictBase>> on_join(
     ThreadContext& joiner,
     ThreadContext& joinee,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_lock(
+  std::optional<std::unique_ptr<ConflictBase>> on_start(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) override;
+
+  std::optional<std::unique_ptr<ConflictBase>> on_end(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) override;
+
+  std::optional<std::unique_ptr<ConflictBase>> on_lock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_unlock(
+  std::optional<std::unique_ptr<ConflictBase>> on_unlock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx
@@ -82,32 +134,44 @@ public:
 
 class BranchingSyncProtocol final : public SyncProtocol {
 
-  std::unordered_map<Commit, std::shared_ptr<graph::Node>> commit_nodes;
+  // std::unordered_map<Commit, std::shared_ptr<graph::Node>> commit_nodes;
 
 public:
+  ~BranchingSyncProtocol() override;
+
   std::optional<size_t> read(ThreadContext& ctx, const std::string& var) override;
 
   void write(ThreadContext& ctx, const std::string& var, size_t value) override;
 
-  std::optional<Conflict> on_spawn(
+  std::optional<std::unique_ptr<ConflictBase>> on_spawn(
     ThreadContext& parent,
     ThreadContext& child,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_join(
+  std::optional<std::unique_ptr<ConflictBase>> on_join(
     ThreadContext& joiner,
     ThreadContext& joinee,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_lock(
+  std::optional<std::unique_ptr<ConflictBase>> on_start(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) override;
+
+  std::optional<std::unique_ptr<ConflictBase>> on_end(
+    ThreadContext& thread,
+    GlobalContext& gctx
+  ) override;
+
+  std::optional<std::unique_ptr<ConflictBase>> on_lock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx
   ) override;
 
-  std::optional<Conflict> on_unlock(
+  std::optional<std::unique_ptr<ConflictBase>> on_unlock(
     ThreadContext& thread,
     Lock& lock,
     GlobalContext& gctx

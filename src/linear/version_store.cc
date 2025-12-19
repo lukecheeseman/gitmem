@@ -1,5 +1,8 @@
-#include "version_store.hh"
 #include <stdexcept>
+#include <iostream>
+
+#include "version_store.hh"
+#include "sync_protocol.hh"
 
 namespace gitmem {
 
@@ -21,12 +24,48 @@ void LocalVersionStore::advance_base(Timestamp ts) {
   _base_timestamp = ts;
 }
 
+std::optional<Value> LocalVersionStore::get_staged(ObjectNumber obj) {
+  auto it = _staging.find(obj);
+  return it != _staging.end() ? std::make_optional(it->second) : std::nullopt;
+}
+
 // -----------------------------
 // GlobalVersionStore
 // -----------------------------
 
-ObjectNumber GlobalVersionStore::allocate_object() {
-  return _next_object++;
+ObjectNumber GlobalVersionStore::get_object_number(std::string var) {
+  auto it = _object_numbers.find(var);
+  if (it != _object_numbers.end()) {
+    return it->second;
+  } else {
+    ObjectNumber number = _next_object++;
+    _object_numbers[var] = number;
+    return number;
+  }
+}
+
+std::string GlobalVersionStore::get_object_name(ObjectNumber find) {
+  for (const auto& [name, number] : _object_numbers) {
+    if (number == find)
+      return name;
+  }
+  assert(false && "failed to find object name for object number");
+  return "";
+}
+
+std::optional<Value> GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj, Timestamp ts) const {
+  const auto it = _history.find(obj);
+
+  if (it == _history.end())
+    return std::nullopt;
+
+  const VersionHistory& history = it->second;
+  for (VersionHistory::const_reverse_iterator riter = history.rbegin(); riter != history.rend(); ++riter) {
+    if (riter->timestamp() <= ts)
+      return riter->value();
+  }
+
+  return std::nullopt;
 }
 
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
@@ -39,12 +78,13 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
       continue;
     }
 
-    const Version& head = it->second.back();
-    if (head.timestamp() > base) {
+    const Version& latest = it->second.back();
+    if (latest.timestamp() > base) {
+      std::cout << "conflict" << std::endl;
       return Conflict{
         .object = obj,
         .local_base = base,
-        .global_head = head.timestamp()
+        .global_head = latest.timestamp()
       };
     }
   }
@@ -59,45 +99,13 @@ Timestamp GlobalVersionStore::apply_changes(
     throw std::logic_error("apply_changes called with conflicts");
   }
 
-  Timestamp new_ts = _timestamp++;
+  Timestamp new_ts = ++_timestamp;
   for (const auto& [obj, value] : changes) {
     _history[obj].emplace_back(new_ts, value);
   }
 
   _timestamp = new_ts;
   return new_ts;
-}
-
-// -----------------------------
-// GlobalVersionHistory (protocol)
-// -----------------------------
-
-std::optional<Conflict> GlobalVersionHistory::push(LocalVersionStore& local) {
-  if (auto conflict = _global.check_conflicts(
-        local.base_timestamp(),
-        local.staged_changes())) {
-    return conflict;
-  }
-
-  Timestamp new_base = _global.apply_changes(
-    local.base_timestamp(),
-    local.staged_changes()
-  );
-
-  local.clear_staging();
-  local.advance_base(new_base);
-  return std::nullopt;
-}
-
-std::optional<Conflict> GlobalVersionHistory::pull(LocalVersionStore& local) {
-  if (auto conflict = _global.check_conflicts(
-        local.base_timestamp(),
-        local.staged_changes())) {
-    return conflict;
-  }
-
-  local.advance_base(_global.current_timestamp());
-  return std::nullopt;
 }
 
 } // namespace linear
