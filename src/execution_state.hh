@@ -46,8 +46,8 @@ namespace gitmem {
 
   struct Lock {
     // Globals globals;
-    // std::optional<ThreadID> owner = std::nullopt;
-    // std::shared_ptr<graph::Node> last;
+    std::optional<ThreadID> owner = std::nullopt;
+    std::shared_ptr<graph::Node> last;
   };
 
   template<typename T, typename...Args>

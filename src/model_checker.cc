@@ -1,3 +1,4 @@
+#include "model_checker.hh"
 #include "interpreter.hh"
 
 namespace gitmem

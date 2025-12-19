@@ -1,5 +1,6 @@
 #include <regex>
 
+#include "debugger.hh"
 #include "interpreter.hh"
 
 namespace gitmem

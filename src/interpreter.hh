@@ -8,11 +8,8 @@
 
 namespace gitmem {
 
-  // Entry functions
+  // Entry function
   int interpret(const trieste::Node, const std::filesystem::path &output_file);
-
-  // int interpret_interactive(const trieste::Node, const std::filesystem::path &output_file);
-  // int model_check(const trieste::Node, const std::filesystem::path &output_file);
 
   // Internal functions
   int run_threads(GlobalContext &);

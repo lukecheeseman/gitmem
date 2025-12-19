@@ -232,58 +232,61 @@ namespace gitmem {
           return 0;
         }
       } else if (s == lang::Lock) {
-        assert(false && "todo");
         // We can only lock unlocked locks, if a lock hasn't been used
         // before it is implicitly created, we then commit the pending
         // updates of this thread and pull the updates from the lock.
-        // auto v = s / lang::Var;
-        // auto var = std::string(v->location().view());
+        auto v = s / lang::Var;
+        auto var = std::string(v->location().view());
 
-        // auto& lock = gctx.locks[var];
-        // if (lock.owner) {
-        //     verbose << "Waiting for lock " << var << " owned by " << lock.owner.value() << std::endl;
-        //     return 0;
-        // }
+        Lock& lock = gctx.locks[var];
+        if (lock.owner) {
+          verbose << "Waiting for lock " << var << " owned by " << lock.owner.value() << std::endl;
+          return 0;
+        }
 
-        // lock.owner = tid;
-        // commit(ctx.globals);
-        // if(auto conflict = pull(ctx.globals, lock.globals))
-        // {
-        //     using graph::Node;
-        //     auto [s1, s2] = conflict->commits;
-        //     auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
-        //     auto graph_conflict = graph::Conflict(conflict->var, sources);
-        //     thread_append_node<graph::Lock>(ctx, var, lock.last, graph_conflict);
-        //     return TerminationStatus::datarace_exception;
-        // }
+        lock.owner = tid;
+        if(auto conflict = gctx.protocol->on_lock(ctx, lock, gctx)) {
+          verbose << (**conflict) << std::endl;
+          //     using graph::Node;
+          //     auto [s1, s2] = conflict->commits;
+          //     auto sources = std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
+          //     auto graph_conflict = graph::Conflict(conflict->var, sources);
+          //     thread_append_node<graph::Lock>(ctx, var, lock.last, graph_conflict);
+          return TerminationStatus::datarace_exception;
+        }
 
-        // thread_append_node<graph::Lock>(ctx, var, lock.last);
+        thread_append_node<graph::Lock>(ctx, var, lock.last);
 
-        // verbose << "Locked " << var << std::endl;
+        verbose << "Locked " << var << std::endl;
       } else if (s == lang::Unlock) {
         assert(false && "todo");
 
-        // // We can only unlock locks we previously locked. We commit any
-        // // pending updates and then copy the threads versioned globals
-        // // to the locks versioned globals (nobody could have changed
-        // // them since we locked the lock).
-        // commit(ctx.globals);
-        // auto v = s / lang::Var;
-        // auto var = std::string(v->location().view());
+        // We can only unlock locks we previously locked. We commit any
+        // pending updates and then copy the threads versioned globals
+        // to the locks versioned globals (nobody could have changed
+        // them since we locked the lock).
 
-        // auto& lock = gctx.locks[var];
-        // if (!lock.owner || (lock.owner && *lock.owner != tid))
-        // {
-        //     return TerminationStatus::unlock_exception;
-        // }
+        // commit(ctx.globals);
+        auto v = s / lang::Var;
+        auto var = std::string(v->location().view());
+
+        auto& lock = gctx.locks[var];
+        if (!lock.owner || (lock.owner && *lock.owner != tid)) {
+          return TerminationStatus::unlock_exception;
+        }
+
+        if(auto conflict = gctx.protocol->on_unlock(ctx, lock, gctx)) {
+          verbose << (**conflict) << std::endl;
+          return TerminationStatus::datarace_exception;
+        }
 
         // lock.globals = ctx.globals;
-        // lock.owner.reset();
+        lock.owner.reset();
 
-        // thread_append_node<graph::Unlock>(ctx, var);
-        // lock.last = ctx.tail;
+        thread_append_node<graph::Unlock>(ctx, var);
+        lock.last = ctx.tail;
 
-        // verbose << "Unlocked " << var << std::endl;
+        verbose << "Unlocked " << var << std::endl;
 
       } else if (s == lang::Assert) {
         auto expr = s / lang::Expr;
