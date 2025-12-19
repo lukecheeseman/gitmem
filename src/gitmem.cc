@@ -2,6 +2,7 @@
 
 #include "debug.hh"
 #include "interpreter.hh"
+#include "model_checker.hh"
 #include "lang.hh"
 
 int main(int argc, char **argv) {
@@ -62,8 +63,7 @@ int main(int argc, char **argv) {
     int exit_status;
     wf::push_back(gitmem::lang::wf);
     if (model_check) {
-      assert(false && "currently broken");
-      // exit_status = gitmem::model_check(result.ast, output_path);
+      exit_status = gitmem::model_check(result.ast, output_path);
     } else if (interactive) {
       assert(false && "currently broken");
       // exit_status = gitmem::interpret_interactive(result.ast, output_path);

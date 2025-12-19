@@ -40,6 +40,7 @@ GlobalContext::~GlobalContext() = default;
 
 void GlobalContext::print_execution_graph(
     const std::filesystem::path &output_path) const {
+  return; // FIXME
   // Loop over the threads and add pending nodes to running threads
   // to indicate a threads next step
   for (const auto &t : threads) {

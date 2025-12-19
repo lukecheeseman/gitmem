@@ -79,7 +79,6 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
                              GlobalContext &gctx) {
   // TODO: i think we can drop the globalcontext but check after branching is
   // added
-  verbose << "on_spawn" << std::endl;
 
   // push parent to global history
   if (auto conflict = push(store(parent)))
@@ -91,7 +90,6 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
                             GlobalContext &gctx) {
-  verbose << "on_join" << std::endl;
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
@@ -103,8 +101,6 @@ LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
 
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
-  verbose << "on_start" << std::endl;
-
   // pull state from global history
   auto conflict = pull(store(thread));
   assert(!conflict && "cannot conflict from starting state");
@@ -114,8 +110,6 @@ LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
 
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
-  verbose << "on_end" << std::endl;
-
   // push changes to global history
   if (auto conflict = push(store(thread)))
     return std::make_unique<LinearConflict>(std::move(*conflict));
@@ -126,16 +120,21 @@ LinearSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock,
                             GlobalContext &gctx) {
-  assert(false && "todo lock");
-  // push thread, pull from global
+
+  if (auto conflict = pull(store(thread)))
+    return std::make_unique<LinearConflict>(std::move(*conflict));
+
   return std::nullopt;
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &,
                               GlobalContext &gctx) {
-  assert(false && "todo unlock");
-  // push thread
+
+  // push changes to global history
+  if (auto conflict = push(store(thread)))
+    return std::make_unique<LinearConflict>(std::move(*conflict));
+
   return std::nullopt;
 }
 

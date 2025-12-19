@@ -28,7 +28,7 @@ add_executable(gitmem
   src/linear/version_store.cc
   src/interpreter.cc
   # src/debugger.cc
-  # src/model_checker.cc
+  src/model_checker.cc
   src/sync_protocol.cc
   src/graphviz.cc
 )

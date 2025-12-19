@@ -256,8 +256,6 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
 
     verbose << "Locked " << var << std::endl;
   } else if (s == lang::Unlock) {
-    assert(false && "todo");
-
     // We can only unlock locks we previously locked. We commit any
     // pending updates and then copy the threads versioned globals
     // to the locks versioned globals (nobody could have changed
@@ -286,6 +284,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     verbose << "Unlocked " << var << std::endl;
 
   } else if (s == lang::Assert) {
+
     auto expr = s / lang::Expr;
     auto result_or_term = evaluate_expression(expr, gctx, ctx);
     if (size_t *result = std::get_if<size_t>(&result_or_term)) {
@@ -300,6 +299,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     } else {
       return std::get<TerminationStatus>(result_or_term);
     }
+
   } else {
     throw std::runtime_error("Unknown statement: " +
                              std::string(stmt->type().str()));

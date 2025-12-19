@@ -79,6 +79,12 @@ struct GlobalContext {
                 std::unique_ptr<SyncProtocol> protocol);
   ~GlobalContext();
 
+  GlobalContext(GlobalContext&&) = default;
+  GlobalContext& operator=(GlobalContext&&) = default;
+
+  GlobalContext(const GlobalContext&) = delete;
+  GlobalContext& operator=(const GlobalContext&) = delete;
+
   bool operator==(const GlobalContext &other) const;
 
   void print_execution_graph(const std::filesystem::path &output_path) const;

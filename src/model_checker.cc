@@ -1,5 +1,7 @@
 #include "model_checker.hh"
 #include "interpreter.hh"
+#include "debug.hh"
+#include "sync_protocol.hh"
 
 namespace gitmem {
 using namespace trieste;
@@ -57,11 +59,11 @@ build_output_path(const std::filesystem::path &output_path, const size_t idx) {
  * for each distinct final state that led to an error.
  */
 int model_check(const Node ast, const std::filesystem::path &output_path) {
-  GlobalContext gctx(ast);
+  GlobalContext gctx(ast, std::make_unique<LinearSyncProtocol>());
 
-  auto final_contexts = std::vector<GlobalContext>{};
-  auto failing_contexts = std::vector<GlobalContext>{};
-  auto deadlocked_contexts = std::vector<GlobalContext>{};
+  auto final_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
+  auto failing_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
+  auto deadlocked_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
 
   auto final_traces = std::vector<std::vector<size_t>>{};
   auto failing_traces = std::vector<std::vector<size_t>>{};
@@ -138,15 +140,16 @@ int model_check(const Node ast, const std::filesystem::path &output_path) {
       // Remember final state if it is new
       if (!std::any_of(
               final_contexts.begin(), final_contexts.end(),
-              [&gctx](const GlobalContext &state) { return state == gctx; })) {
-        final_contexts.push_back(gctx);
+              [&gctx](const std::shared_ptr<GlobalContext> &state) { return *state == gctx; })) {
+        std::shared_ptr<GlobalContext> gctxp = std::make_shared<GlobalContext>(std::move(gctx));
+        final_contexts.push_back(gctxp);
         final_traces.push_back(current_trace);
         if (any_crashed) {
           failing_traces.push_back(current_trace);
-          failing_contexts.push_back(gctx);
+          failing_contexts.push_back(gctxp);
         } else if (is_deadlock) {
           deadlocked_traces.push_back(current_trace);
-          deadlocked_contexts.push_back(gctx);
+          deadlocked_contexts.push_back(gctxp);
         }
       }
 
@@ -156,7 +159,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path) {
     if (cursor->complete && !root->complete) {
       // Reset the cursor to the root and start a new trace
       verbose << std::endl << "Restarting trace..." << std::endl;
-      gctx = GlobalContext(ast);
+      gctx = GlobalContext(ast, std::make_unique<LinearSyncProtocol>());
 
       cursor = root;
       current_trace.clear();
@@ -179,7 +182,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path) {
 
     for (const auto &ctx : failing_contexts) {
       auto path = build_output_path(output_path, idx++);
-      ctx.print_execution_graph(path);
+      ctx->print_execution_graph(path);
     }
   }
 
@@ -190,7 +193,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path) {
 
     for (const auto &ctx : deadlocked_contexts) {
       auto path = build_output_path(output_path, idx++);
-      ctx.print_execution_graph(path);
+      ctx->print_execution_graph(path);
     }
   }
 
