@@ -1,6 +1,14 @@
+#include <iostream>
 #include "sync_protocol.hh"
+#include "debug.hh"
 
 namespace gitmem {
+
+template<typename T>
+std::ostream& Conflict<T>::print(std::ostream& os) const {
+  os << "conflict on " << var << " { " << versions.first << ", " << versions.second << " }";
+  return os;
+}
 
 // --------------------
 // LinearSyncProtocol
@@ -74,14 +82,10 @@ std::optional<std::unique_ptr<ConflictBase>> LinearSyncProtocol::on_spawn(
   GlobalContext& gctx
 ) {
   // TODO: i think we can drop the globalcontext but check after branching is added
+  verbose << "on_spawn" << std::endl;
 
   // push parent to global history
   if (auto conflict = push(store(parent)))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
-
-  // TODO: we should probably separate start and spawn
-  // child inherits parent view
-  if (auto conflict = pull(store(child)))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
@@ -92,7 +96,7 @@ std::optional<std::unique_ptr<ConflictBase>> LinearSyncProtocol::on_join(
   ThreadContext& joinee,
   GlobalContext& gctx
 ) {
-  std::cout << "on_join" << std::endl;
+  verbose << "on_join" << std::endl;
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
@@ -106,7 +110,7 @@ std::optional<std::unique_ptr<ConflictBase>> LinearSyncProtocol::on_start(
     ThreadContext& thread,
     GlobalContext& gctx
 ) {
-  std::cout << "on_start" << std::endl;
+  verbose << "on_start" << std::endl;
 
   // pull state from global history
   auto conflict = pull(store(thread));
@@ -119,7 +123,7 @@ std::optional<std::unique_ptr<ConflictBase>> LinearSyncProtocol::on_end(
     ThreadContext& thread,
     GlobalContext& gctx
   ) {
-  std::cout << "on_end" << std::endl;
+  verbose << "on_end" << std::endl;
 
   // push changes to global history
   if (auto conflict = push(store(thread)))

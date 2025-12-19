@@ -2,6 +2,7 @@
 
 #include "lang.hh"
 #include "interpreter.hh"
+#include "debug.hh"
 
 int main(int argc, char **argv)
 {

@@ -5,6 +5,7 @@
 #include "interpreter.hh"
 #include "graphviz.hh"
 #include "sync_protocol.hh"
+#include "debug.hh"
 
 namespace gitmem {
 
@@ -220,6 +221,7 @@ namespace gitmem {
         auto& joinee = gctx.threads[result];
         if (joinee->terminated && (*joinee->terminated == TerminationStatus::completed)) {
           if(auto conflict = gctx.protocol->on_join(ctx, joinee->ctx, gctx)) {
+            verbose << (**conflict) << std::endl;
             return TerminationStatus::datarace_exception;
           } else {
             thread_append_node<graph::Join>(ctx, result, joinee->ctx.tail);

@@ -80,7 +80,6 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
 
     const Version& latest = it->second.back();
     if (latest.timestamp() > base) {
-      std::cout << "conflict" << std::endl;
       return Conflict{
         .object = obj,
         .local_base = base,

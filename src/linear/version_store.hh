@@ -37,6 +37,11 @@ public:
     ++(*this);
     return old;
   }
+
+  friend std::ostream& operator<<(std::ostream& os, const LargeCounter& counter) {
+    os << counter._epoch << ":" << counter._counter;
+    return os;
+  }
 };
 
 using Timestamp = LargeCounter;

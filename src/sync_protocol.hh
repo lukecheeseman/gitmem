@@ -12,7 +12,10 @@ namespace gitmem {
 
 struct ConflictBase {
   virtual ~ConflictBase() = default;
-  virtual std::string name() const = 0;
+  virtual std::ostream& print(std::ostream& os) const = 0;
+  friend std::ostream& operator<<(std::ostream& os, const ConflictBase& conflict) {
+    return conflict.print(os);
+  }
 };
 
 template<typename VersionID>
@@ -20,10 +23,10 @@ struct Conflict : ConflictBase {
   std::string var;
   std::pair<VersionID, VersionID> versions;
 
-  std::string name() const override { return var; }
-
   Conflict(std::string var, std::pair<VersionID, VersionID> versions):
     var(std::move(var)), versions(std::move(versions)) {}
+
+  std::ostream& print(std::ostream& os) const override;
 };
 
 using LinearConflict = Conflict<linear::Timestamp>;
