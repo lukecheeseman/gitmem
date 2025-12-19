@@ -6,19 +6,18 @@ namespace lang {
 
 using namespace trieste;
 
-Reader reader()
-  {
-    return {
+Reader reader() {
+  return {
       "gitmem",
       {
-        expressions(),
-        statements(),
-        check_refs(),
-        branching(),
+          expressions(),
+          statements(),
+          check_refs(),
+          branching(),
       },
       gitmem::lang::parser(),
-    };
-  }
+  };
+}
 
 } // namespace lang
 

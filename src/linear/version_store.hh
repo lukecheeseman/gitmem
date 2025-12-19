@@ -1,10 +1,10 @@
 #pragma once
 
-#include <vector>
-#include <unordered_map>
-#include <optional>
 #include <cassert>
 #include <cstdint>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 namespace gitmem {
 
@@ -19,9 +19,9 @@ class LargeCounter {
   uint64_t _counter{0};
 
 public:
-  auto operator<=>(const LargeCounter&) const = default;
+  auto operator<=>(const LargeCounter &) const = default;
 
-  LargeCounter& operator++() {
+  LargeCounter &operator++() {
     if (_counter == UINT64_MAX) {
       _counter = 0;
       assert(_epoch != UINT64_MAX && "timestamp overflow");
@@ -38,7 +38,8 @@ public:
     return old;
   }
 
-  friend std::ostream& operator<<(std::ostream& os, const LargeCounter& counter) {
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const LargeCounter &counter) {
     os << counter._epoch << ":" << counter._counter;
     return os;
   }
@@ -57,8 +58,7 @@ class Version {
   Value _value;
 
 public:
-  Version(Timestamp ts, Value value)
-    : _timestamp(ts), _value(value) {}
+  Version(Timestamp ts, Value value) : _timestamp(ts), _value(value) {}
 
   Timestamp timestamp() const { return _timestamp; }
   Value value() const { return _value; }
@@ -86,7 +86,7 @@ class LocalVersionStore {
 
 public:
   Timestamp base_timestamp() const { return _base_timestamp; }
-  const auto& staged_changes() const { return _staging; }
+  const auto &staged_changes() const { return _staging; }
 
   void stage(ObjectNumber obj, Value value);
   void clear_staging();
@@ -112,15 +112,13 @@ public:
 
   std::optional<Value> get_version_for_timestamp(ObjectNumber, Timestamp) const;
 
-  std::optional<Conflict> check_conflicts(
-    Timestamp base,
-    const std::unordered_map<ObjectNumber, Value>& changes
-  ) const;
+  std::optional<Conflict>
+  check_conflicts(Timestamp base,
+                  const std::unordered_map<ObjectNumber, Value> &changes) const;
 
-  Timestamp apply_changes(
-    Timestamp base,
-    const std::unordered_map<ObjectNumber, Value>& changes
-  );
+  Timestamp
+  apply_changes(Timestamp base,
+                const std::unordered_map<ObjectNumber, Value> &changes);
 };
 
 } // namespace linear

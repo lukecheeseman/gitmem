@@ -1,8 +1,8 @@
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 
-#include "version_store.hh"
 #include "sync_protocol.hh"
+#include "version_store.hh"
 
 namespace gitmem {
 
@@ -16,13 +16,9 @@ void LocalVersionStore::stage(ObjectNumber obj, Value value) {
   _staging[obj] = value;
 }
 
-void LocalVersionStore::clear_staging() {
-  _staging.clear();
-}
+void LocalVersionStore::clear_staging() { _staging.clear(); }
 
-void LocalVersionStore::advance_base(Timestamp ts) {
-  _base_timestamp = ts;
-}
+void LocalVersionStore::advance_base(Timestamp ts) { _base_timestamp = ts; }
 
 std::optional<Value> LocalVersionStore::get_staged(ObjectNumber obj) {
   auto it = _staging.find(obj);
@@ -45,7 +41,7 @@ ObjectNumber GlobalVersionStore::get_object_number(std::string var) {
 }
 
 std::string GlobalVersionStore::get_object_name(ObjectNumber find) {
-  for (const auto& [name, number] : _object_numbers) {
+  for (const auto &[name, number] : _object_numbers) {
     if (number == find)
       return name;
   }
@@ -53,14 +49,17 @@ std::string GlobalVersionStore::get_object_name(ObjectNumber find) {
   return "";
 }
 
-std::optional<Value> GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj, Timestamp ts) const {
+std::optional<Value>
+GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj,
+                                              Timestamp ts) const {
   const auto it = _history.find(obj);
 
   if (it == _history.end())
     return std::nullopt;
 
-  const VersionHistory& history = it->second;
-  for (VersionHistory::const_reverse_iterator riter = history.rbegin(); riter != history.rend(); ++riter) {
+  const VersionHistory &history = it->second;
+  for (VersionHistory::const_reverse_iterator riter = history.rbegin();
+       riter != history.rend(); ++riter) {
     if (riter->timestamp() <= ts)
       return riter->value();
   }
@@ -69,37 +68,31 @@ std::optional<Value> GlobalVersionStore::get_version_for_timestamp(ObjectNumber 
 }
 
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
-  Timestamp base,
-  const std::unordered_map<ObjectNumber, Value>& changes
-) const {
-  for (const auto& [obj, _] : changes) {
+    Timestamp base,
+    const std::unordered_map<ObjectNumber, Value> &changes) const {
+  for (const auto &[obj, _] : changes) {
     auto it = _history.find(obj);
     if (it == _history.end()) {
       continue;
     }
 
-    const Version& latest = it->second.back();
+    const Version &latest = it->second.back();
     if (latest.timestamp() > base) {
       return Conflict{
-        .object = obj,
-        .local_base = base,
-        .global_head = latest.timestamp()
-      };
+          .object = obj, .local_base = base, .global_head = latest.timestamp()};
     }
   }
   return std::nullopt;
 }
 
 Timestamp GlobalVersionStore::apply_changes(
-  Timestamp base,
-  const std::unordered_map<ObjectNumber, Value>& changes
-) {
+    Timestamp base, const std::unordered_map<ObjectNumber, Value> &changes) {
   if (auto conflict = check_conflicts(base, changes)) {
     throw std::logic_error("apply_changes called with conflicts");
   }
 
   Timestamp new_ts = ++_timestamp;
-  for (const auto& [obj, value] : changes) {
+  for (const auto &[obj, value] : changes) {
     _history[obj].emplace_back(new_ts, value);
   }
 

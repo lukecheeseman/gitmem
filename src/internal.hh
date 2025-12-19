@@ -5,21 +5,21 @@ namespace gitmem {
 
 namespace lang {
 
-  using namespace trieste;
+using namespace trieste;
 
-  Parse parser();
-  PassDef expressions();
-  PassDef statements();
-  PassDef check_refs();
-  PassDef branching();
+Parse parser();
+PassDef expressions();
+PassDef statements();
+PassDef check_refs();
+PassDef branching();
 
-  inline const auto parse_token =
-     Reg | Var | Const | Nop | Brace | Paren |
-     Spawn | Join | Lock | Unlock | Assert | If | Else;
+inline const auto parse_token = Reg | Var | Const | Nop | Brace | Paren |
+                                Spawn | Join | Lock | Unlock | Assert | If |
+                                Else;
 
-  inline const auto parse_op = Group | Assign | Eq | Neq | Add | Semi;
+inline const auto parse_op = Group | Assign | Eq | Neq | Add | Semi;
 
-  // clang-format off
+// clang-format off
 	inline const wf::Wellformed parser_wf =
 		(Top <<= File)
 		| (File	<<= ~parse_op)
@@ -84,7 +84,7 @@ namespace lang {
     | (Jump <<= Const)
     | (Cond <<= Expr * Const)
     ;
-  // clang-format on
+// clang-format on
 
 } // namespace lang
 

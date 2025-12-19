@@ -1,81 +1,87 @@
 #pragma once
 
-#include <vector>
 #include <optional>
-#include <unordered_map>
 #include <trieste/trieste.h>
+#include <unordered_map>
+#include <vector>
 
+#include "branching/version_store.hh"
 #include "graphviz.hh"
 #include "lang.hh"
 #include "linear/version_store.hh"
-#include "branching/version_store.hh"
 
 namespace gitmem {
 
-  class SyncProtocol;
+class SyncProtocol;
 
-  enum class TerminationStatus {
-    completed,
-    datarace_exception,
-    unlock_exception,
-    assertion_failure_exception,
-    unassigned_variable_read_exception,
+enum class TerminationStatus {
+  completed,
+  datarace_exception,
+  unlock_exception,
+  assertion_failure_exception,
+  unassigned_variable_read_exception,
+};
+
+struct ThreadContext {
+  std::unordered_map<std::string, size_t> locals;
+  std::shared_ptr<graph::Node> tail;
+
+  struct LinearData {
+    linear::LocalVersionStore store;
+  };
+  struct BranchingData {
+    branching::LocalVersionStore store;
   };
 
-  struct ThreadContext {
-    std::unordered_map<std::string, size_t> locals;
-    std::shared_ptr<graph::Node> tail;
+  std::optional<LinearData> linear;
+  std::optional<BranchingData> branching;
+};
 
-    struct LinearData { linear::LocalVersionStore store; };
-    struct BranchingData { branching::LocalVersionStore store; };
+struct Thread {
+  ThreadContext ctx;
+  trieste::Node block;
+  size_t pc = 0;
+  std::optional<TerminationStatus> terminated = std::nullopt;
 
-    std::optional<LinearData> linear;
-    std::optional<BranchingData> branching;
-  };
+  bool operator==(const Thread &other) const;
+};
 
-  struct Thread {
-    ThreadContext ctx;
-    trieste::Node block;
-    size_t pc = 0;
-    std::optional<TerminationStatus> terminated = std::nullopt;
+using ThreadID = size_t;
 
-    bool operator==(const Thread &other) const;
-  };
+struct Lock {
+  // Globals globals;
+  std::optional<ThreadID> owner = std::nullopt;
+  std::shared_ptr<graph::Node> last;
+};
 
-  using ThreadID = size_t;
+template <typename T, typename... Args>
+std::shared_ptr<T> thread_append_node(ThreadContext &ctx, Args &&...args);
 
-  struct Lock {
-    // Globals globals;
-    std::optional<ThreadID> owner = std::nullopt;
-    std::shared_ptr<graph::Node> last;
-  };
+template <>
+std::shared_ptr<graph::Pending>
+thread_append_node<graph::Pending>(ThreadContext &ctx, std::string &&stmt);
 
-  template<typename T, typename...Args>
-  std::shared_ptr<T> thread_append_node(ThreadContext& ctx, Args&&...args);
+struct GlobalContext {
+  // Execution state
+  std::vector<std::shared_ptr<Thread>> threads;
+  std::unordered_map<std::string, Lock> locks;
 
-  template<>
-  std::shared_ptr<graph::Pending> thread_append_node<graph::Pending>(ThreadContext& ctx, std::string&& stmt);
+  // AST evaluation cache
+  lang::NodeMap<size_t> cache;
 
-  struct GlobalContext {
-    // Execution state
-    std::vector<std::shared_ptr<Thread>> threads;
-    std::unordered_map<std::string, Lock> locks;
+  // Graph root
+  std::shared_ptr<graph::Node> entry_node;
 
-    // AST evaluation cache
-    lang::NodeMap<size_t> cache;
+  // Synchronisation semantics (policy)
+  std::unique_ptr<SyncProtocol> protocol;
 
-    // Graph root
-    std::shared_ptr<graph::Node> entry_node;
+  GlobalContext(const trieste::Node &ast,
+                std::unique_ptr<SyncProtocol> protocol);
+  ~GlobalContext();
 
-    // Synchronisation semantics (policy)
-    std::unique_ptr<SyncProtocol> protocol;
+  bool operator==(const GlobalContext &other) const;
 
-    GlobalContext(const trieste::Node &ast, std::unique_ptr<SyncProtocol> protocol);
-    ~GlobalContext();
-
-    bool operator==(const GlobalContext &other) const;
-
-    void print_execution_graph(const std::filesystem::path &output_path) const;
-  };
+  void print_execution_graph(const std::filesystem::path &output_path) const;
+};
 
 } // namespace gitmem
