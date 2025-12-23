@@ -6,10 +6,15 @@ from collections import defaultdict
 
 EXAMPLES_DIR = "examples"
 
-def run_gitmem_test(gitmem_path, file_path, should_accept):
+def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
+  cmd = [gitmem_path, file_path, "-e", "-o", "/dev/null"]
+
+  if is_branching:
+    cmd.insert(2, "-b")
+
   try:
     result = subprocess.run(
-      [gitmem_path, file_path, "-e", "-o", "/dev/null"],
+      cmd,
       capture_output=True,
       text=True
     )
@@ -59,8 +64,10 @@ def main():
           test_dir = os.path.join(base_dir, subcategory)
           if not os.path.isdir(test_dir):
             continue
+          is_branching = (subcategory == "branching")
         else:
           test_dir = base_dir
+          is_branching = False
 
         for root, _, files in os.walk(test_dir):
           for file in files:
@@ -69,7 +76,12 @@ def main():
             total_tests += 1
             results[expectation][category][subcategory]["total"] += 1
 
-            if not run_gitmem_test(gitmem_path, file_path, should_accept):
+            if not run_gitmem_test(
+              gitmem_path,
+              file_path,
+              should_accept,
+              is_branching
+            ):
               failed_tests += 1
               results[expectation][category][subcategory]["failed"] += 1
 
