@@ -89,10 +89,7 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
   } else if (e == lang::Spawn) {
     ThreadID tid = gctx.threads.size();
     auto node = std::make_shared<graph::Start>(tid);
-    ThreadContext child_ctx = {std::unordered_map<std::string, size_t>(), node};
-    gctx.threads.push_back(
-        std::make_shared<Thread>(child_ctx, e / lang::Block));
-    thread_append_node<graph::Spawn>(ctx, tid, node);
+    ThreadContext child_ctx(node);
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
@@ -105,9 +102,9 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
       std::unreachable();
     }
 
-    // Spawning is a sync point, commit local pending commits, and
-    // copy the global state to the spawned thread
-    // commit(ctx.globals);
+    gctx.threads.push_back(
+      std::make_shared<Thread>(std::move(child_ctx), e / lang::Block));
+    thread_append_node<graph::Spawn>(ctx, tid, node);
 
     return tid;
   } else if (e == lang::Eq || e == lang::Neq) {
@@ -326,6 +323,12 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
   Node block = thread->block;
   size_t &pc = thread->pc;
   ThreadContext &ctx = thread->ctx;
+
+  // TODO: one possible interpretation of on_start is to sync when the thread
+  // starts execution statements
+  // if (pc == 0) {
+  //   gctx.protocol->on_start(thread->ctx, gctx);
+  // }
 
   bool first_statement = true;
   while (pc < block->size()) {

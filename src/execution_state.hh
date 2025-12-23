@@ -35,6 +35,14 @@ struct ThreadContext {
 
   std::optional<LinearData> linear;
   std::optional<BranchingData> branching;
+
+  ThreadContext(const ThreadContext&) = delete;
+  ThreadContext& operator=(const ThreadContext&) = delete;
+
+  ThreadContext(ThreadContext&&) = default;
+  ThreadContext& operator=(ThreadContext&&) = default;
+
+  ThreadContext(std::shared_ptr<graph::Node> tail): tail(tail) {}
 };
 
 struct Thread {

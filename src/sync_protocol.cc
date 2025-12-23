@@ -224,6 +224,10 @@ void BranchingSyncProtocol::write(ThreadContext &ctx, const std::string &var,
   assert(false && "Todo write");
 }
 
+// Spawning is a sync point, commit local pending commits, and
+// copy the global state to the spawned thread
+// commit(ctx.globals);
+
 std::optional<std::unique_ptr<ConflictBase>>
 BranchingSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
                                 GlobalContext &) {

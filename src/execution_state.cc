@@ -27,9 +27,8 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
                              std::unique_ptr<SyncProtocol> protocol)
     : protocol(std::move(protocol)) {
   trieste::Node starting_block = ast / lang::File / lang::Block;
-  ThreadContext starting_ctx = {.locals = {},
-                                .tail = std::make_shared<graph::Start>(0)};
-  auto main_thread = std::make_shared<Thread>(starting_ctx, starting_block);
+  ThreadContext starting_ctx(std::make_shared<graph::Start>(0));
+  auto main_thread = std::make_shared<Thread>(std::move(starting_ctx), starting_block);
 
   this->threads = {main_thread};
   this->locks = {};
