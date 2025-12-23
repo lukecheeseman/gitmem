@@ -6,6 +6,20 @@ from collections import defaultdict
 
 EXAMPLES_DIR = "examples"
 
+def supports_color():
+  return sys.stdout.isatty() and os.getenv("NO_COLOR") is None
+
+def color(text, code):
+  if not supports_color():
+    return text
+  return f"\033[{code}m{text}\033[0m"
+
+def green(text):
+  return color(text, "32")
+
+def red(text):
+  return color(text, "31")
+
 def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
   cmd = [gitmem_path, file_path, "-e", "-o", "/dev/null"]
 
@@ -23,9 +37,11 @@ def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
     print(f"Error: '{gitmem_path}' executable not found.")
     sys.exit(1)
 
-  status = "PASS" if accepted == should_accept else "FAIL"
+  passed = (accepted == should_accept)
+  status = green("PASS") if passed else red("FAIL")
+
   print(f"[{status}] {file_path} (exit code: {result.returncode})")
-  return status == "PASS"
+  return passed
 
 def main():
   parser = argparse.ArgumentParser(description="Test runner for gitmem.")
@@ -45,6 +61,7 @@ def main():
 
   total_tests = 0
   failed_tests = 0
+  failing_tests = []
 
   for expectation in ["accept", "reject"]:
     should_accept = (expectation == "accept")
@@ -76,14 +93,17 @@ def main():
             total_tests += 1
             results[expectation][category][subcategory]["total"] += 1
 
-            if not run_gitmem_test(
+            passed = run_gitmem_test(
               gitmem_path,
               file_path,
               should_accept,
               is_branching
-            ):
+            )
+
+            if not passed:
               failed_tests += 1
               results[expectation][category][subcategory]["failed"] += 1
+              failing_tests.append(file_path)
 
   print("\nDetailed Summary:")
   for expectation, categories in results.items():
@@ -103,6 +123,11 @@ def main():
   print(f"Total tests run: {total_tests}")
   print(f"Tests failed:    {failed_tests}")
   print(f"Tests passed:    {total_tests - failed_tests}")
+
+  if failing_tests:
+    print("\nFailing tests:")
+    for path in failing_tests:
+      print(f"  {red(path)}")
 
   if failed_tests > 0:
     sys.exit(1)
