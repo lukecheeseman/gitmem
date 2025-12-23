@@ -31,7 +31,12 @@ bool is_syncing(Node stmt) {
 }
 
 bool is_syncing(Thread &thread) {
-  return !thread.terminated && is_syncing(thread.block->at(thread.pc));
+  // Can only be true if a thread hasn't terminated
+  // Either it has executed all statements but not yet terminated (and my sync)
+  // Or it is at a synchronisation node
+  // The lazy eval here is important
+  return !thread.terminated &&
+    ((thread.pc >= thread.block->size()) || is_syncing(thread.block->at(thread.pc)));
 }
 
 template <typename T, typename... Args>
@@ -356,11 +361,16 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
     first_statement = false;
   }
 
-  thread->terminated = TerminationStatus::completed;
-  gctx.protocol->on_end(thread->ctx, gctx);
+  // End should be it's own sync step
+  if (first_statement) {
+    thread->terminated = TerminationStatus::completed;
+    gctx.protocol->on_end(thread->ctx, gctx);
 
-  thread_append_node<graph::End>(ctx);
-  return TerminationStatus::completed;
+    thread_append_node<graph::End>(ctx);
+    return TerminationStatus::completed;
+  }
+
+  return ProgressStatus::progress;
 }
 
 /**

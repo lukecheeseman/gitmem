@@ -10,6 +10,6 @@ t = spawn {
   assert(x == 2);
 };
 join t;
-assert (x == 2);
+// assert (x == 2 || x == 42); || not support but, in linear we only know this to be true
 join t2;
 assert (x == 14);
