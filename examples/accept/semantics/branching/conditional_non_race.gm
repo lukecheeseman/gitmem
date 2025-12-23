@@ -13,6 +13,6 @@ $t2 = spawn {
 join $t1;
 join $t2;
 // FIXME in branching these assertions are always true, but not in linear
-// assert (x != 0);
-// assert (y != 0);
-// assert (x == y);
+assert (x != 0);
+assert (y != 0);
+assert (x == y);

@@ -273,4 +273,14 @@ BranchingSyncProtocol::on_unlock(ThreadContext &thread, Lock &lock,
   return std::nullopt;
 }
 
+std::unique_ptr<SyncProtocol> make_protocol(SyncKind sync_kind) {
+  switch (sync_kind) {
+    case SyncKind::Linear:
+      return std::make_unique<LinearSyncProtocol>();
+    case SyncKind::Branching:
+      return std::make_unique<BranchingSyncProtocol>();
+  }
+  std::unreachable();
+}
+
 } // namespace gitmem

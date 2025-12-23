@@ -10,6 +10,13 @@
 
 namespace gitmem {
 
+enum class SyncKind {
+  Linear,
+  Branching
+};
+
+std::unique_ptr<SyncProtocol> make_protocol(SyncKind);
+
 struct ConflictBase {
   virtual ~ConflictBase() = default;
   virtual std::ostream &print(std::ostream &os) const = 0;

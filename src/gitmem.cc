@@ -4,6 +4,7 @@
 #include "interpreter.hh"
 #include "model_checker.hh"
 #include "lang.hh"
+#include "sync_protocol.hh"
 
 int main(int argc, char **argv) {
   using namespace trieste;
@@ -29,6 +30,10 @@ int main(int argc, char **argv) {
   bool model_check = false;
   app.add_flag("-e,--explore", model_check,
                "Explore all possible execution paths.");
+
+  bool branching = false;
+  app.add_flag("-b,--branching", branching,
+               "Using branching semantics.");
 
   try {
     app.parse(argc, argv);
@@ -61,14 +66,15 @@ int main(int argc, char **argv) {
     gitmem::verbose << "Output will be written to " << output_path << std::endl;
 
     int exit_status;
+    gitmem::SyncKind sync_kind = branching ? gitmem::SyncKind::Branching : gitmem::SyncKind::Linear;
     wf::push_back(gitmem::lang::wf);
     if (model_check) {
-      exit_status = gitmem::model_check(result.ast, output_path);
+      exit_status = gitmem::model_check(result.ast, output_path, sync_kind);
     } else if (interactive) {
       assert(false && "currently broken");
       // exit_status = gitmem::interpret_interactive(result.ast, output_path);
     } else {
-      exit_status = gitmem::interpret(result.ast, output_path);
+      exit_status = gitmem::interpret(result.ast, output_path, sync_kind);
     }
     wf::pop_front();
 

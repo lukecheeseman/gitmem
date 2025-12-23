@@ -5,11 +5,12 @@
 #include "graphviz.hh"
 #include "lang.hh"
 #include <trieste/trieste.h>
+#include "sync_protocol.hh"
 
 namespace gitmem {
 
 // Entry function
-int interpret(const trieste::Node, const std::filesystem::path &output_file);
+int interpret(const trieste::Node, const std::filesystem::path &output_file, SyncKind sync_kind);
 
 // Internal functions
 int run_threads(GlobalContext &);

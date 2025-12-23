@@ -99,6 +99,12 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
       assert(false); // handle this
     }
 
+    // making the on_spawn and on_start events happen at thread spawn
+    if (std::optional<std::unique_ptr<ConflictBase>> conflict =
+            gctx.protocol->on_start(child_ctx, gctx)) {
+      std::unreachable();
+    }
+
     // Spawning is a sync point, commit local pending commits, and
     // copy the global state to the spawned thread
     // commit(ctx.globals);
@@ -321,10 +327,6 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
   size_t &pc = thread->pc;
   ThreadContext &ctx = thread->ctx;
 
-  if (pc == 0) {
-    gctx.protocol->on_start(thread->ctx, gctx);
-  }
-
   bool first_statement = true;
   while (pc < block->size()) {
     Node stmt = block->at(pc);
@@ -371,6 +373,7 @@ progress_thread(GlobalContext &gctx, const ThreadID tid,
   bool any_progress =
       std::holds_alternative<ProgressStatus>(prog_or_term) &&
       std::get<ProgressStatus>(prog_or_term) == ProgressStatus::progress;
+
   for (size_t i = no_threads; i < gctx.threads.size(); ++i) {
     // If there are new threads, we can run them to sync as well
     any_progress = true;
@@ -489,9 +492,8 @@ int run_threads(GlobalContext &gctx) {
   return exception_detected ? 1 : 0;
 }
 
-int interpret(const Node ast, const std::filesystem::path &output_path) {
-  // TODO: allow both protocols
-  GlobalContext gctx(ast, std::make_unique<LinearSyncProtocol>());
+int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
+  GlobalContext gctx(ast, make_protocol(sync_kind));
   auto result = run_threads(gctx);
   // gctx.print_execution_graph(output_path); FIXME
 
