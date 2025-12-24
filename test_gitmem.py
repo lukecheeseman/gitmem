@@ -32,16 +32,20 @@ def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
       capture_output=True,
       text=True
     )
-    accepted = (result.returncode == 0)
+    if should_accept:
+      # Accept tests pass if exit code is 0
+      accepted = (result.returncode == 0)
+    else:
+      # Reject tests pass only if exit code is 1
+      accepted = (result.returncode == 1)
+
   except FileNotFoundError:
     print(f"Error: '{gitmem_path}' executable not found.")
     sys.exit(1)
 
-  passed = (accepted == should_accept)
-  status = green("PASS") if passed else red("FAIL")
-
+  status = green("PASS") if accepted else red("FAIL")
   print(f"[{status}] {file_path} (exit code: {result.returncode})")
-  return passed
+  return accepted
 
 def main():
   parser = argparse.ArgumentParser(description="Test runner for gitmem.")

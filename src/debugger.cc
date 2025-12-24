@@ -147,7 +147,7 @@ int interpret_interactive(const trieste::Node ast,
     if (command.cmd != Command::Skip ||
         prev_no_threads != gctx.threads.size()) {
       bool show_all = command.cmd == Command::List;
-      show_global_context(gctx, show_all);
+      gctx.print(std::cout, show_all);
     }
     prev_no_threads = gctx.threads.size();
 

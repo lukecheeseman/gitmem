@@ -189,12 +189,9 @@ void show_lock(const std::string &lock_name, const struct Lock &lock) {
   // }
 }
 
-std::ostream& operator<<(std::ostream& os, const GlobalContext& gctx) {
-  os << *gctx.protocol << std::endl;
+void GlobalContext::print(std::ostream& os, bool show_all) const {
+  os << *protocol << std::endl;
 
-  bool show_all = false;
-
-  auto &threads = gctx.threads;
   bool showed_any = false;
   for (size_t i = 0; i < threads.size(); i++) {
     auto thread = threads[i];
@@ -207,17 +204,20 @@ std::ostream& operator<<(std::ostream& os, const GlobalContext& gctx) {
     }
   }
 
-  if (showed_any && gctx.locks.size() > 0) {
+  if (showed_any && locks.size() > 0) {
     os << "---- Locks" << std::endl;
 
-    for (const auto &[lock_name, lock] : gctx.locks) {
+    for (const auto &[lock_name, lock] : locks) {
       show_lock(lock_name, lock);
     }
 
-    if (gctx.locks.size() > 0)
+    if (locks.size() > 0)
       os << "--" << std::endl;
   }
+}
 
+std::ostream& operator<<(std::ostream& os, const GlobalContext& gctx) {
+  gctx.print(os);
   return os;
 }
 
