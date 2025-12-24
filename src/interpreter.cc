@@ -98,7 +98,7 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
-      assert(false); // handle this
+      throw std::logic_error("This code path should never be reached");
     }
 
     gctx.threads.push_back(
@@ -356,10 +356,17 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
   }
 
   // End should be it's own sync step
-  if (first_statement) {
-    thread->terminated = TerminationStatus::completed;
-    gctx.protocol->on_end(thread->ctx, gctx);
 
+  // TODO: tidy this up
+  if (first_statement) {
+    if (std::optional<std::unique_ptr<ConflictBase>> conflict =
+            gctx.protocol->on_end(ctx, gctx)) {
+      verbose << (**conflict) << std::endl;
+      thread->terminated = TerminationStatus::datarace_exception;
+      return TerminationStatus::datarace_exception;
+    }
+
+    thread->terminated = TerminationStatus::completed;
     thread_append_node<graph::End>(ctx);
     return TerminationStatus::completed;
   }

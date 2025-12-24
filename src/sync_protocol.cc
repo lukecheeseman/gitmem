@@ -96,7 +96,7 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
   // pull into the child
   store = std::get<ThreadContext::LinearData>(child.sync).store;
   if (auto conflict = pull(store)) {
-    std::unreachable();
+    throw std::logic_error("This code path should never be reached");
   }
 
   return std::nullopt;
