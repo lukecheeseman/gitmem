@@ -31,7 +31,18 @@ struct Conflict {
   std::pair<Commit, Commit> commits;
 };
 
-struct LocalVersionStore {};
+struct LocalVersionStore {
+  friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
+    assert(false && "TODO");
+    return os;
+  }
+
+  bool operator==(const LocalVersionStore& other) const {
+    assert(false && "TODO");
+    return false;
+  }
+
+};
 
 // Join logic
 // commit(ctx.globals);

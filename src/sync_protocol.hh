@@ -70,6 +70,13 @@ public:
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) = 0;
+
+
+  virtual std::ostream &print(std::ostream &os) const = 0;
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const SyncProtocol &protocol) {
+    return protocol.print(os);
+  }
 };
 
 // ---------------------------------
@@ -115,6 +122,8 @@ public:
 
   std::optional<std::unique_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) override;
+
+  std::ostream &print(std::ostream &os) const override;
 };
 
 class BranchingSyncProtocol final : public SyncProtocol {
@@ -148,6 +157,8 @@ public:
 
   std::optional<std::unique_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) override;
+
+  std::ostream &print(std::ostream &os) const override;
 };
 
 } // namespace gitmem

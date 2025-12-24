@@ -92,6 +92,24 @@ public:
   void clear_staging();
   void advance_base(Timestamp ts);
   std::optional<Value> get_staged(ObjectNumber obj);
+
+  bool operator==(const LocalVersionStore& other) const;
+
+  friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
+    os << "LocalVersionStore{"
+      << "base=" << store._base_timestamp
+      << ", staged={";
+
+    bool first = true;
+    for (const auto& [obj, val] : store._staging) {
+      if (!first) os << ", ";
+      first = false;
+      os << obj << "->" << val;
+    }
+
+    os << "}}";
+    return os;
+  }
 };
 
 // -----------------------------

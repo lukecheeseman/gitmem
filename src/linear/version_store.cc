@@ -25,6 +25,11 @@ std::optional<Value> LocalVersionStore::get_staged(ObjectNumber obj) {
   return it != _staging.end() ? std::make_optional(it->second) : std::nullopt;
 }
 
+bool LocalVersionStore::operator==(const LocalVersionStore& other) const {
+  return _base_timestamp == other._base_timestamp &&
+         _staging == other._staging;
+}
+
 // -----------------------------
 // GlobalVersionStore
 // -----------------------------

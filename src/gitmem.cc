@@ -3,6 +3,7 @@
 #include "debug.hh"
 #include "interpreter.hh"
 #include "model_checker.hh"
+#include "debugger.hh"
 #include "lang.hh"
 #include "sync_protocol.hh"
 
@@ -71,8 +72,7 @@ int main(int argc, char **argv) {
     if (model_check) {
       exit_status = gitmem::model_check(result.ast, output_path, sync_kind);
     } else if (interactive) {
-      assert(false && "currently broken");
-      // exit_status = gitmem::interpret_interactive(result.ast, output_path);
+      exit_status = gitmem::interpret_interactive(result.ast, output_path, sync_kind);
     } else {
       exit_status = gitmem::interpret(result.ast, output_path, sync_kind);
     }

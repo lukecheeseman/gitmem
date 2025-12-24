@@ -1,26 +1,44 @@
+#include <regex>
+
 #include "execution_state.hh"
 #include "sync_protocol.hh"
 
 namespace gitmem {
 
+bool ThreadContext::operator==(const ThreadContext &other) const {
+  if (locals != other.locals)
+    return false;
+
+  // ignore the graph node, we're not interested in that
+
+  if (linear) {
+    return other.linear && (linear->store == other.linear->store);
+  } else if (branching) {
+    return other.branching && (branching->store == other.branching->store);
+  }
+
+  return !other.linear && !other.branching;
+}
+
+// An old comment on equals
+// Globals have a history that we don't care about, so we only
+// compare values
+// if (ctx.globals.size() != other.ctx.globals.size())
+//     return false;
+// for (const auto &[var, global] : ctx.globals)
+// {
+//     if (!other.ctx.globals.contains(var) ||
+//         ctx.globals.at(var).val != other.ctx.globals.at(var).val)
+//     {
+//         return false;
+//     }
+// }
+
 bool Thread::operator==(const Thread &other) const {
-  return false;
-  // Globals have a history that we don't care about, so we only
-  // compare values
-  // if (ctx.globals.size() != other.ctx.globals.size())
-  //     return false;
-  // for (const auto &[var, global] : ctx.globals)
-  // {
-  //     if (!other.ctx.globals.contains(var) ||
-  //         ctx.globals.at(var).val != other.ctx.globals.at(var).val)
-  //     {
-  //         return false;
-  //     }
-  // }
-  // return ctx.locals == other.ctx.locals &&
-  //         block == other.block &&
-  //         pc == other.pc &&
-  //         terminated == other.terminated;
+  return ctx == other.ctx &&
+          block == other.block &&
+          pc == other.pc &&
+          terminated == other.terminated;
 }
 
 GlobalContext::GlobalContext(const trieste::Node &ast,
@@ -60,31 +78,73 @@ void GlobalContext::print_execution_graph(
 }
 
 bool GlobalContext::operator==(const GlobalContext &other) const {
-  return false;
-  // if (threads.size() != other.threads.size() || locks.size() !=
-  // other.locks.size())
-  //     return false;
+  if (threads.size() != other.threads.size() ||
+      locks.size() != other.locks.size())
+    return false;
 
-  // // Threads may have been spawned in a different order, so we
-  // // find the thread with the same block in the other context
-  // for (auto &thread : threads)
-  // {
-  //     auto it = std::find_if(other.threads.begin(), other.threads.end(),
-  //                             [&thread](auto &t)
-  //                             { return t->block == thread->block; });
-  //     if (it == other.threads.end() || !(*thread == **it))
-  //         return false;
-  // }
+  // Threads may have been spawned in a different order, so we
+  // find the thread with the same block in the other context
+  for (auto &thread : threads) {
+    auto it = std::find_if(other.threads.begin(), other.threads.end(),
+                            [&thread](auto &t)
+                            { return t->block == thread->block; });
+    if (it == other.threads.end() || !(*thread == **it))
+      return false;
+  }
 
-  // for (auto &[name, lock] : locks)
-  // {
-  //     if (!other.locks.contains(name))
-  //         return false;
-  //     auto &other_lock = other.locks.at(name);
-  //     if (lock.owner != other_lock.owner)
-  //         return false;
-  // }
-  // return true;
+  for (auto &[name, lock] : locks) {
+    if (!other.locks.contains(name))
+      return false;
+    auto &other_lock = other.locks.at(name);
+    if (lock.owner != other_lock.owner)
+      return false;
+  }
+  return true;
+}
+
+/** Print the state of a thread, including its local and global variables,
+ * and the current position in the program. */
+std::ostream& operator<<(std::ostream& os, const Thread& thread) {
+  os << thread.ctx << std::endl;
+
+  size_t idx = 0;
+  for (const auto &stmt : *(thread.block)) {
+    if (idx == thread.pc) {
+      os << "-> ";
+    } else {
+      os << "   ";
+    }
+
+    // This should be somewhere else
+    // Fix indentation of nested blocks
+    auto s = std::string(stmt->location().view());
+    s = std::regex_replace(s, std::regex("\n"), "\n   ");
+    os << s << ";" << std::endl;
+
+    idx++;
+  }
+  if (thread.pc == thread.block->size()) {
+    os << "-> " << std::endl;
+  }
+
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const ThreadContext& ctx) {
+  if (ctx.locals.size() > 0) {
+    for (auto &[reg, val] : ctx.locals) {
+      os << reg << " = " << val << std::endl;
+    }
+    os << "--" << std::endl;
+  }
+
+  if (ctx.linear) {
+    os << ctx.linear->store << std::endl;
+  } else if (ctx.branching) {
+    os << ctx.branching->store << std::endl;
+  }
+
+  return os;
 }
 
 } // namespace gitmem

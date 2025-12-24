@@ -1,6 +1,9 @@
 x = 0;
 y = 0;
 flag = 0;
+// if t1 gets the lock l1 first then there is a race
+//  t1 will see the flag is not set, set the flag to 1, and set its x to 1
+//  t2 will see the flag is set, and will also set its x at 1
 $t1 = spawn {
     lock l1;
     $r = 0;

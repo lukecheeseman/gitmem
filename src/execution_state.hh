@@ -43,6 +43,10 @@ struct ThreadContext {
   ThreadContext& operator=(ThreadContext&&) = default;
 
   ThreadContext(std::shared_ptr<graph::Node> tail): tail(tail) {}
+
+  bool operator==(const ThreadContext &other) const;
+
+  friend std::ostream& operator<<(std::ostream&, const ThreadContext&);
 };
 
 struct Thread {
@@ -51,7 +55,18 @@ struct Thread {
   size_t pc = 0;
   std::optional<TerminationStatus> terminated = std::nullopt;
 
+  Thread(ThreadContext&& ctx, trieste::Node block):
+    ctx(std::move(ctx)), block(block) {};
+
+  Thread(const Thread&) = delete;
+  Thread& operator=(const Thread&) = delete;
+
+  Thread(Thread&&) = default;
+  Thread& operator=(Thread&&) = default;
+
   bool operator==(const Thread &other) const;
+
+  friend std::ostream& operator<<(std::ostream&, const Thread&);
 };
 
 using ThreadID = size_t;

@@ -1,5 +1,6 @@
 #include <regex>
 
+#include "debug.hh"
 #include "debugger.hh"
 #include "interpreter.hh"
 
@@ -21,54 +22,17 @@ struct Command {
   ThreadID argument = 0;
 };
 
-void show_global(const std::string &var, const Global &global) {
-  std::cout << var << " = " << global.val << " ["
-            << (global.commit ? std::to_string(*global.commit) : "_") << "; ";
-  for (size_t i = 0; i < global.history.size(); ++i) {
-    std::cout << global.history[i];
-    if (i < global.history.size() - 1) {
-      std::cout << ", ";
-    }
-  }
-  std::cout << "]" << std::endl;
-}
-
-/** Print the state of a thread, including its local and global variables,
- * and the current position in the program. */
-void show_thread(const Thread &thread, size_t tid) {
-  std::cout << "---- Thread " << tid << std::endl;
-  if (thread.ctx.locals.size() > 0) {
-    for (auto &[reg, val] : thread.ctx.locals) {
-      std::cout << reg << " = " << val << std::endl;
-    }
-    std::cout << "--" << std::endl;
-  }
-
-  if (thread.ctx.globals.size() > 0) {
-    for (auto &[var, val] : thread.ctx.globals) {
-      show_global(var, val);
-    }
-    std::cout << "--" << std::endl;
-  }
-
-  size_t idx = 0;
-  for (const auto &stmt : *thread.block) {
-    if (idx == thread.pc) {
-      std::cout << "-> ";
-    } else {
-      std::cout << "   ";
-    }
-    // Fix indentation of nested blocks
-    auto s = std::string(stmt->location().view());
-    s = std::regex_replace(s, std::regex("\n"), "\n   ");
-    std::cout << s << ";" << std::endl;
-
-    idx++;
-  }
-  if (thread.pc == thread.block->size()) {
-    std::cout << "-> " << std::endl;
-  }
-}
+// void show_global(const std::string &var, const Global &global) {
+//   std::cout << var << " = " << global.val << " ["
+//             << (global.commit ? std::to_string(*global.commit) : "_") << "; ";
+//   for (size_t i = 0; i < global.history.size(); ++i) {
+//     std::cout << global.history[i];
+//     if (i < global.history.size() - 1) {
+//       std::cout << ", ";
+//     }
+//   }
+//   std::cout << "]" << std::endl;
+// }
 
 void show_lock(const std::string &lock_name, const struct Lock &lock) {
   std::cout << lock_name << ": ";
@@ -78,9 +42,9 @@ void show_lock(const std::string &lock_name, const struct Lock &lock) {
     std::cout << "<free>";
   }
   std::cout << std::endl;
-  for (auto &[var, global] : lock.globals) {
-    show_global(var, global);
-  }
+  // for (auto &[var, global] : lock.globals) {
+  //   show_global(var, global);
+  // }
 }
 
 /** Show the global context, including locks and non-completed threads. If
@@ -93,7 +57,8 @@ void show_global_context(const GlobalContext &gctx, bool show_all = false) {
     auto thread = threads[i];
     if (show_all || !thread->terminated ||
         *threads[i]->terminated != TerminationStatus::completed) {
-      show_thread(*threads[i], i);
+      std::cout << "---- Thread " << i << std::endl;
+      std::cout << *threads[i] << std::endl;
       std::cout << std::endl;
       showed_any = true;
     }
@@ -216,8 +181,9 @@ bool step_thread(ThreadID tid, GlobalContext &gctx, std::string &msg) {
 /** Interpret the AST in an interactive way, letting the user choose which
  * thread to schedule next. */
 int interpret_interactive(const trieste::Node ast,
-                          const std::filesystem::path &output_file) {
-  GlobalContext gctx(ast);
+                          const std::filesystem::path &output_file,
+                          SyncKind sync_kind) {
+  GlobalContext gctx(ast, make_protocol(sync_kind));
 
   size_t prev_no_threads = 1;
   Command command = {Command::List};
@@ -267,7 +233,7 @@ int interpret_interactive(const trieste::Node ast,
       }
     } else if (command.cmd == Command::Restart) {
       // Start the program from the beginning
-      gctx = GlobalContext(ast);
+      gctx = GlobalContext(ast, make_protocol(sync_kind));
       command = {Command::List};
       if (print_graphs) {
         gctx.print_execution_graph(output_file);

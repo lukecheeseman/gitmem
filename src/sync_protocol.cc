@@ -14,6 +14,11 @@ template <typename T> std::ostream &Conflict<T>::print(std::ostream &os) const {
 // LinearSyncProtocol
 // --------------------
 
+std::ostream &LinearSyncProtocol::print(std::ostream &os) const {
+  assert(false && "todo");
+  return os;
+}
+
 std::optional<LinearConflict>
 LinearSyncProtocol::push(linear::LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
@@ -143,6 +148,11 @@ LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &,
 // --------------------
 
 BranchingSyncProtocol::~BranchingSyncProtocol() = default;
+
+std::ostream &BranchingSyncProtocol::print(std::ostream &os) const {
+  assert(false && "TODO");
+  return os;
+}
 
 // /* At a commit point, walk through all the versioned variables and see if
 //   * they have a pending commit, if so commit the value by appending to
