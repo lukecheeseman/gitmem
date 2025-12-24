@@ -5,19 +5,39 @@
 
 namespace gitmem {
 
+ThreadContext::ThreadContext(std::shared_ptr<graph::Node> tail, SyncKind sync_kind): tail(tail) {
+  switch (sync_kind) {
+    case SyncKind::Linear:
+      sync.emplace<LinearData>();
+      break;
+    case SyncKind::Branching:
+      sync.emplace<BranchingData>();
+      break;
+  }
+}
+
 bool ThreadContext::operator==(const ThreadContext &other) const {
   if (locals != other.locals)
     return false;
 
   // ignore the graph node, we're not interested in that
 
-  if (linear) {
-    return other.linear && (linear->store == other.linear->store);
-  } else if (branching) {
-    return other.branching && (branching->store == other.branching->store);
-  }
+  if (sync.index() != other.sync.index())
+    return false;
 
-  return !other.linear && !other.branching;
+  return std::visit([&](const auto& a, const auto& b) -> bool {
+    using A = std::decay_t<decltype(a)>;
+    using B = std::decay_t<decltype(b)>;
+
+    if constexpr (std::is_same_v<A, std::monostate> &&
+                  std::is_same_v<B, std::monostate>) {
+      return true;
+    } else if constexpr (std::is_same_v<A, B>) {
+      return a.store == b.store;
+    } else {
+      return false; // unreachable due to index check
+    }
+  }, sync, other.sync);
 }
 
 // An old comment on equals
@@ -45,7 +65,7 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
                              std::unique_ptr<SyncProtocol> protocol)
     : protocol(std::move(protocol)) {
   trieste::Node starting_block = ast / lang::File / lang::Block;
-  ThreadContext starting_ctx(std::make_shared<graph::Start>(0));
+  ThreadContext starting_ctx(std::make_shared<graph::Start>(0), this->protocol->kind());
   auto main_thread = std::make_shared<Thread>(std::move(starting_ctx), starting_block);
 
   this->threads = {main_thread};
@@ -131,20 +151,75 @@ std::ostream& operator<<(std::ostream& os, const Thread& thread) {
 }
 
 std::ostream& operator<<(std::ostream& os, const ThreadContext& ctx) {
-  if (ctx.locals.size() > 0) {
-    for (auto &[reg, val] : ctx.locals) {
-      os << reg << " = " << val << std::endl;
-    }
-    os << "--" << std::endl;
+  os << "ThreadContext{locals={";
+
+  bool first = true;
+  for (const auto& [k, v] : ctx.locals) {
+    if (!first) os << ", ";
+    first = false;
+    os << k << "=" << v;
   }
 
-  if (ctx.linear) {
-    os << ctx.linear->store << std::endl;
-  } else if (ctx.branching) {
-    os << ctx.branching->store << std::endl;
+  os << "}"; //, tail=" << ctx.tail;
+
+  std::visit([&](const auto& data) {
+    using T = std::decay_t<decltype(data)>;
+
+    if constexpr (std::is_same_v<T, ThreadContext::LinearData>) {
+      os << ", sync=linear{" << data.store << "}";
+    } else if constexpr (std::is_same_v<T, ThreadContext::BranchingData>) {
+      os << ", sync=branching{" << data.store << "}";
+    }
+  }, ctx.sync);
+
+  os << "}";
+  return os;
+}
+
+void show_lock(const std::string &lock_name, const struct Lock &lock) {
+  std::cout << lock_name << ": ";
+  if (lock.owner) {
+    std::cout << "held by thread " << *lock.owner;
+  } else {
+    std::cout << "<free>";
+  }
+  std::cout << std::endl;
+  // for (auto &[var, global] : lock.globals) {
+  //   show_global(var, global);
+  // }
+}
+
+std::ostream& operator<<(std::ostream& os, const GlobalContext& gctx) {
+  os << *gctx.protocol << std::endl;
+
+  bool show_all = false;
+
+  auto &threads = gctx.threads;
+  bool showed_any = false;
+  for (size_t i = 0; i < threads.size(); i++) {
+    auto thread = threads[i];
+    if (show_all || !thread->terminated ||
+        *threads[i]->terminated != TerminationStatus::completed) {
+      os << "---- Thread " << i << std::endl;
+      os << *threads[i] << std::endl;
+      os << std::endl;
+      showed_any = true;
+    }
+  }
+
+  if (showed_any && gctx.locks.size() > 0) {
+    os << "---- Locks" << std::endl;
+
+    for (const auto &[lock_name, lock] : gctx.locks) {
+      show_lock(lock_name, lock);
+    }
+
+    if (gctx.locks.size() > 0)
+      os << "--" << std::endl;
   }
 
   return os;
 }
+
 
 } // namespace gitmem

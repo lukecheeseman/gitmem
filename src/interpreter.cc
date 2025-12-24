@@ -94,17 +94,11 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
   } else if (e == lang::Spawn) {
     ThreadID tid = gctx.threads.size();
     auto node = std::make_shared<graph::Start>(tid);
-    ThreadContext child_ctx(node);
+    ThreadContext child_ctx(node, gctx.protocol->kind());
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
       assert(false); // handle this
-    }
-
-    // making the on_spawn and on_start events happen at thread spawn
-    if (std::optional<std::unique_ptr<ConflictBase>> conflict =
-            gctx.protocol->on_start(child_ctx, gctx)) {
-      std::unreachable();
     }
 
     gctx.threads.push_back(
@@ -329,11 +323,11 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
   size_t &pc = thread->pc;
   ThreadContext &ctx = thread->ctx;
 
-  // TODO: one possible interpretation of on_start is to sync when the thread
+  // one possible interpretation of on_start is to sync when the thread
   // starts execution statements
-  // if (pc == 0) {
-  //   gctx.protocol->on_start(thread->ctx, gctx);
-  // }
+  if (pc == 0) {
+    gctx.protocol->on_start(thread->ctx, gctx);
+  }
 
   bool first_statement = true;
   while (pc < block->size()) {

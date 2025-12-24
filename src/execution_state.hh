@@ -5,10 +5,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "lang.hh"
+#include "sync_kind.hh"
+#include "linear/version_store.hh"
 #include "branching/version_store.hh"
 #include "graphviz.hh"
-#include "lang.hh"
-#include "linear/version_store.hh"
 
 namespace gitmem {
 
@@ -33,8 +34,7 @@ struct ThreadContext {
     branching::LocalVersionStore store;
   };
 
-  std::optional<LinearData> linear;
-  std::optional<BranchingData> branching;
+  std::variant<LinearData, BranchingData> sync;
 
   ThreadContext(const ThreadContext&) = delete;
   ThreadContext& operator=(const ThreadContext&) = delete;
@@ -42,7 +42,7 @@ struct ThreadContext {
   ThreadContext(ThreadContext&&) = default;
   ThreadContext& operator=(ThreadContext&&) = default;
 
-  ThreadContext(std::shared_ptr<graph::Node> tail): tail(tail) {}
+  ThreadContext(std::shared_ptr<graph::Node> tail, SyncKind sync_kind);
 
   bool operator==(const ThreadContext &other) const;
 
@@ -109,6 +109,8 @@ struct GlobalContext {
   GlobalContext& operator=(const GlobalContext&) = delete;
 
   bool operator==(const GlobalContext &other) const;
+
+  friend std::ostream& operator<<(std::ostream&, const GlobalContext&);
 
   void print_execution_graph(const std::filesystem::path &output_path) const;
 };

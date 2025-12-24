@@ -1,7 +1,8 @@
 #pragma once
 
-#include "branching/version_store.hh"
+#include "sync_kind.hh"
 #include "execution_state.hh"
+#include "branching/version_store.hh"
 #include "linear/version_store.hh"
 #include <memory>
 #include <optional>
@@ -9,11 +10,6 @@
 /* i want an on_start and on_end event i think too */
 
 namespace gitmem {
-
-enum class SyncKind {
-  Linear,
-  Branching
-};
 
 std::unique_ptr<SyncProtocol> make_protocol(SyncKind);
 
@@ -42,6 +38,7 @@ using BranchingConflict = Conflict<branching::Commit>;
 class SyncProtocol {
 public:
   virtual ~SyncProtocol() = default;
+  virtual SyncKind kind() const = 0;
 
   // Read a shared variable into the thread context
   virtual std::optional<size_t> read(ThreadContext &ctx,
@@ -86,17 +83,12 @@ public:
 class LinearSyncProtocol final : public SyncProtocol {
   linear::GlobalVersionStore _global_store;
 
-  static linear::LocalVersionStore &store(ThreadContext &ctx) {
-    if (!ctx.linear)
-      ctx.linear.emplace();
-    return ctx.linear->store;
-  }
-
   std::optional<LinearConflict> push(linear::LocalVersionStore &local);
   std::optional<LinearConflict> pull(linear::LocalVersionStore &local);
 
 public:
   ~LinearSyncProtocol() override;
+  SyncKind kind() const override { return SyncKind::Linear; };
 
   std::optional<size_t> read(ThreadContext &ctx,
                              const std::string &var) override;
@@ -132,6 +124,7 @@ class BranchingSyncProtocol final : public SyncProtocol {
 
 public:
   ~BranchingSyncProtocol() override;
+  SyncKind kind() const override { return SyncKind::Branching; };
 
   std::optional<size_t> read(ThreadContext &ctx,
                              const std::string &var) override;

@@ -22,58 +22,11 @@ struct Command {
   ThreadID argument = 0;
 };
 
-// void show_global(const std::string &var, const Global &global) {
-//   std::cout << var << " = " << global.val << " ["
-//             << (global.commit ? std::to_string(*global.commit) : "_") << "; ";
-//   for (size_t i = 0; i < global.history.size(); ++i) {
-//     std::cout << global.history[i];
-//     if (i < global.history.size() - 1) {
-//       std::cout << ", ";
-//     }
-//   }
-//   std::cout << "]" << std::endl;
-// }
-
-void show_lock(const std::string &lock_name, const struct Lock &lock) {
-  std::cout << lock_name << ": ";
-  if (lock.owner) {
-    std::cout << "held by thread " << *lock.owner;
-  } else {
-    std::cout << "<free>";
-  }
-  std::cout << std::endl;
-  // for (auto &[var, global] : lock.globals) {
-  //   show_global(var, global);
-  // }
-}
-
 /** Show the global context, including locks and non-completed threads. If
  * show_all is true, show all threads, even those that have terminated
  * normally. */
 void show_global_context(const GlobalContext &gctx, bool show_all = false) {
-  auto &threads = gctx.threads;
-  bool showed_any = false;
-  for (size_t i = 0; i < threads.size(); i++) {
-    auto thread = threads[i];
-    if (show_all || !thread->terminated ||
-        *threads[i]->terminated != TerminationStatus::completed) {
-      std::cout << "---- Thread " << i << std::endl;
-      std::cout << *threads[i] << std::endl;
-      std::cout << std::endl;
-      showed_any = true;
-    }
-  }
-
-  if (showed_any && gctx.locks.size() > 0) {
-    std::cout << "---- Locks" << std::endl;
-
-    for (const auto &[lock_name, lock] : gctx.locks) {
-      show_lock(lock_name, lock);
-    }
-
-    if (gctx.locks.size() > 0)
-      std::cout << "--" << std::endl;
-  }
+  std::cout << gctx << std::endl;
 }
 
 /** Parse a command. See the help string for the 'Info' command for details.

@@ -30,6 +30,22 @@ bool LocalVersionStore::operator==(const LocalVersionStore& other) const {
          _staging == other._staging;
 }
 
+std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
+  os << "LocalVersionStore{"
+    << "base=" << store._base_timestamp
+    << ", staged={";
+
+  bool first = true;
+  for (const auto& [obj, val] : store._staging) {
+    if (!first) os << ", ";
+    first = false;
+    os << obj << "->" << val;
+  }
+
+  os << "}}";
+  return os;
+}
+
 // -----------------------------
 // GlobalVersionStore
 // -----------------------------
@@ -103,6 +119,26 @@ Timestamp GlobalVersionStore::apply_changes(
 
   _timestamp = new_ts;
   return new_ts;
+}
+
+std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
+  os << "GlobalVersionStore(timestamp=" << store._timestamp
+     << ", next_object=" << store._next_object << ")\n";
+
+  for (const auto& [obj_num, history] : store._history) {
+    os << "  Object " << obj_num;
+    auto it = std::find_if(store._object_numbers.begin(), store._object_numbers.end(),
+                           [&](const auto& pair){ return pair.second == obj_num; });
+    if (it != store._object_numbers.end())
+      os << " (" << it->first << ")";
+    os << ":\n";
+
+    for (const auto& version : history) {
+      os << "    [" << version.timestamp() << "] = " << version.value() << "\n";
+    }
+  }
+
+  return os;
 }
 
 } // namespace linear

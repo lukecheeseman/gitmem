@@ -95,21 +95,7 @@ public:
 
   bool operator==(const LocalVersionStore& other) const;
 
-  friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
-    os << "LocalVersionStore{"
-      << "base=" << store._base_timestamp
-      << ", staged={";
-
-    bool first = true;
-    for (const auto& [obj, val] : store._staging) {
-      if (!first) os << ", ";
-      first = false;
-      os << obj << "->" << val;
-    }
-
-    os << "}}";
-    return os;
-  }
+  friend std::ostream& operator<<(std::ostream&, const LocalVersionStore&);
 };
 
 // -----------------------------
@@ -137,6 +123,8 @@ public:
   Timestamp
   apply_changes(Timestamp base,
                 const std::unordered_map<ObjectNumber, Value> &changes);
+
+  friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
 };
 
 } // namespace linear
