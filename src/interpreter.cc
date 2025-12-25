@@ -316,62 +316,58 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
 std::variant<ProgressStatus, TerminationStatus>
 run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
                           std::shared_ptr<Thread> thread) {
-  if (thread->terminated) {
-    return *(thread->terminated);
-  }
+  if (thread->terminated)
+    return *thread->terminated;
+
+  auto& ctx = thread->ctx;
+  auto& pc  = thread->pc;
   Node block = thread->block;
-  size_t &pc = thread->pc;
-  ThreadContext &ctx = thread->ctx;
 
-  // one possible interpretation of on_start is to sync when the thread
-  // starts execution statements
-  if (pc == 0) {
-    gctx.protocol->on_start(thread->ctx, gctx);
-  }
+  // Initial sync when thread starts executing
+  if (pc == 0)
+    gctx.protocol->on_start(ctx, gctx);
 
-  bool first_statement = true;
+  bool made_progress = false;
+
   while (pc < block->size()) {
     Node stmt = block->at(pc);
 
-    if (!first_statement && is_syncing(stmt)) {
+    // Stop *before* executing a sync statement (except first)
+    if (made_progress && is_syncing(stmt))
       return ProgressStatus::progress;
-    }
 
-    auto delta_or_term = run_statement(stmt, gctx, ctx, tid);
-    if (auto term = std::get_if<TerminationStatus>(&delta_or_term)) {
+    auto result = run_statement(stmt, gctx, ctx, tid);
+
+    if (auto term = std::get_if<TerminationStatus>(&result)) {
       thread->terminated = *term;
-      // thread_append_node<graph::End>(ctx);
       return *term;
     }
 
-    auto delta = std::get<int>(delta_or_term);
+    int delta = std::get<int>(result);
 
-    if (delta == 0) {
-      return first_statement ? ProgressStatus::no_progress
-                             : ProgressStatus::progress;
-    }
+    // Blocked (e.g. waiting on lock/join)
+    if (delta == 0)
+      return made_progress ? ProgressStatus::progress
+                           : ProgressStatus::no_progress;
 
     pc += delta;
-    first_statement = false;
+    made_progress = true;
   }
 
-  // End should be it's own sync step
+  // If we ran *any* statements, finishing is a sync point for next iteration
+  if (made_progress)
+    return ProgressStatus::progress;
 
-  // TODO: tidy this up
-  if (first_statement) {
-    if (std::optional<std::unique_ptr<ConflictBase>> conflict =
-            gctx.protocol->on_end(ctx, gctx)) {
-      verbose << (**conflict) << std::endl;
-      thread->terminated = TerminationStatus::datarace_exception;
-      return TerminationStatus::datarace_exception;
-    }
-
-    thread->terminated = TerminationStatus::completed;
-    thread_append_node<graph::End>(ctx);
-    return TerminationStatus::completed;
+  // Otherwise, we truly reached the end this iteration
+  if (auto conflict = gctx.protocol->on_end(ctx, gctx)) {
+    verbose << (**conflict) << std::endl;
+    thread->terminated = TerminationStatus::datarace_exception;
+    return TerminationStatus::datarace_exception;
   }
 
-  return ProgressStatus::progress;
+  thread->terminated = TerminationStatus::completed;
+  thread_append_node<graph::End>(ctx);
+  return TerminationStatus::completed;
 }
 
 /**
