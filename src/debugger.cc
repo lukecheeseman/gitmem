@@ -142,7 +142,7 @@ int interpret_interactive(const trieste::Node ast,
   Command command = {Command::List};
   std::string msg = "";
   bool print_graphs = true;
-  gctx.print_execution_graph(output_file);
+  // gctx.print_execution_graph(output_file);
   while (command.cmd != Command::Quit) {
     if (command.cmd != Command::Skip ||
         prev_no_threads != gctx.threads.size()) {
@@ -170,18 +170,21 @@ int interpret_interactive(const trieste::Node ast,
         command = {Command::Skip};
 
       if (print_graphs) {
-        gctx.print_execution_graph(output_file);
+        // gctx.print_execution_graph(output_file);
+        assert(false && "todo");
         verbose << "Execution graph written to " << output_file << std::endl;
       }
     } else if (command.cmd == Command::Finish) {
       // Finish the program
-      if (!run_threads(gctx))
-        msg = "Program finished successfully";
-      else
-        msg = "Program terminated with an error";
+      assert(false && "fixme");
+      // if (!run_threads(gctx))
+      //   msg = "Program finished successfully";
+      // else
+      //   msg = "Program terminated with an error";
 
       if (print_graphs) {
-        gctx.print_execution_graph(output_file);
+        // gctx.print_execution_graph(output_file);
+        assert(false && "todo");
         verbose << "Execution graph written to " << output_file << std::endl;
       }
     } else if (command.cmd == Command::Restart) {
@@ -189,7 +192,8 @@ int interpret_interactive(const trieste::Node ast,
       gctx = GlobalContext(ast, make_protocol(sync_kind));
       command = {Command::List};
       if (print_graphs) {
-        gctx.print_execution_graph(output_file);
+        // gctx.print_execution_graph(output_file);
+        assert(false && "todo");
         verbose << "Execution graph written to " << output_file << std::endl;
       }
     } else if (command.cmd == Command::List) {
@@ -202,7 +206,8 @@ int interpret_interactive(const trieste::Node ast,
       command = {Command::Skip};
     } else if (command.cmd == Command::Print) {
       // Print the execution graph
-      gctx.print_execution_graph(output_file);
+      // gctx.print_execution_graph(output_file);
+      assert(false && "todo");
       verbose << "Execution graph written to " << output_file << std::endl;
       command = {Command::Skip};
     } else if (command.cmd == Command::Skip) {

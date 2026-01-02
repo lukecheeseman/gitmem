@@ -5,7 +5,7 @@
 
 namespace gitmem {
 
-ThreadContext::ThreadContext(std::shared_ptr<graph::Node> tail, SyncKind sync_kind): tail(tail) {
+ThreadContext::ThreadContext(SyncKind sync_kind) {
   switch (sync_kind) {
     case SyncKind::Linear:
       sync.emplace<LinearData>();
@@ -65,8 +65,10 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
                              std::unique_ptr<SyncProtocol> protocol)
     : protocol(std::move(protocol)) {
   trieste::Node starting_block = ast / lang::File / lang::Block;
-  ThreadContext starting_ctx(std::make_shared<graph::Start>(0), this->protocol->kind());
-  auto main_thread = std::make_shared<Thread>(std::move(starting_ctx), starting_block);
+  ThreadContext starting_ctx(this->protocol->kind());
+
+  ThreadID main_tid = 0;
+  auto main_thread = std::make_shared<Thread>(main_tid, std::move(starting_ctx), starting_block);
 
   this->threads = {main_thread};
   this->locks = {};
@@ -75,27 +77,27 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
 
 GlobalContext::~GlobalContext() = default;
 
-void GlobalContext::print_execution_graph(
-    const std::filesystem::path &output_path) const {
-  return; // FIXME
-  // Loop over the threads and add pending nodes to running threads
-  // to indicate a threads next step
-  for (const auto &t : threads) {
-    assert(t->ctx.tail);
-    if (t->terminated ||
-        dynamic_pointer_cast<const graph::Pending>(t->ctx.tail->next))
-      continue;
+// void GlobalContext::print_execution_graph(
+//     const std::filesystem::path &output_path) const {
+//   return; // FIXME
+//   // Loop over the threads and add pending nodes to running threads
+//   // to indicate a threads next step
+//   for (const auto &t : threads) {
+//     assert(t->ctx.tail);
+//     if (t->terminated ||
+//         dynamic_pointer_cast<const graph::Pending>(t->ctx.tail->next))
+//       continue;
 
-    trieste::Node block = t->block;
-    size_t &pc = t->pc;
-    trieste::Node stmt = block->at(pc);
-    thread_append_node<graph::Pending>(t->ctx,
-                                       std::string(stmt->location().view()));
-  }
+//     trieste::Node block = t->block;
+//     size_t &pc = t->pc;
+//     trieste::Node stmt = block->at(pc);
+//     thread_append_node<graph::Pending>(t->ctx,
+//                                        std::string(stmt->location().view()));
+//   }
 
-  graph::GraphvizPrinter gv(output_path);
-  gv.visit(entry_node.get());
-}
+//   graph::GraphvizPrinter gv(output_path);
+//   gv.visit(entry_node.get());
+// }
 
 bool GlobalContext::operator==(const GlobalContext &other) const {
   if (threads.size() != other.threads.size() ||

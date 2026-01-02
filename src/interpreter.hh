@@ -4,30 +4,15 @@
 #include "graph.hh"
 #include "graphviz.hh"
 #include "lang.hh"
+#include "progress_status.hh"
 #include <trieste/trieste.h>
 #include "sync_protocol.hh"
+#include "termination_status.hh"
 
 namespace gitmem {
 
 // Entry function
 int interpret(const trieste::Node, const std::filesystem::path &output_file, SyncKind sync_kind);
-
-// Internal functions
-int run_threads(GlobalContext &);
-
-enum class ProgressStatus { progress, no_progress };
-inline bool operator!(ProgressStatus p) {
-  return p == ProgressStatus::no_progress;
-}
-inline ProgressStatus operator||(const ProgressStatus &p1,
-                                 const ProgressStatus &p2) {
-  return (p1 == ProgressStatus::progress || p2 == ProgressStatus::progress)
-             ? ProgressStatus::progress
-             : ProgressStatus::no_progress;
-}
-inline void operator|=(ProgressStatus &p1, const ProgressStatus &p2) {
-  p1 = (p1 || p2);
-}
 
 std::variant<ProgressStatus, TerminationStatus>
 progress_thread(GlobalContext &, const ThreadID, std::shared_ptr<Thread>);

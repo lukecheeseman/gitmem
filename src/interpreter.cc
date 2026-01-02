@@ -39,31 +39,11 @@ bool is_syncing(Thread &thread) {
     ((thread.pc >= thread.block->size()) || is_syncing(thread.block->at(thread.pc)));
 }
 
-template <typename T, typename... Args>
-std::shared_ptr<T> thread_append_node(ThreadContext &ctx, Args &&...args) {
-  assert(ctx.tail);
-  auto node = std::make_shared<T>(std::forward<Args>(args)...);
-  ctx.tail->next = node;
-  ctx.tail = node;
-  return node;
-}
-
-template <>
-std::shared_ptr<graph::Pending>
-thread_append_node<graph::Pending>(ThreadContext &ctx, std::string &&stmt) {
-  // pending nodes don't update the tail position as we will destroy them
-  // once we execute the node
-  auto s = std::regex_replace(stmt, std::regex("\n"), "\\l   ");
-  auto node = make_shared<graph::Pending>(std::move(s));
-  ctx.tail->next = node;
-  return node;
-}
-
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
 std::variant<size_t, TerminationStatus>
-evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
+evaluate_expression(trieste::Node expr, GlobalContext &gctx, ThreadContext &ctx) {
   auto e = expr / lang::Expr;
   if (e == lang::Reg) {
     // It is invalid to read a previously unwritten value
@@ -93,8 +73,7 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
     return sum;
   } else if (e == lang::Spawn) {
     ThreadID tid = gctx.threads.size();
-    auto node = std::make_shared<graph::Start>(tid);
-    ThreadContext child_ctx(node, gctx.protocol->kind());
+    ThreadContext child_ctx(gctx.protocol->kind());
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
@@ -102,8 +81,8 @@ evaluate_expression(Node expr, GlobalContext &gctx, ThreadContext &ctx) {
     }
 
     gctx.threads.push_back(
-      std::make_shared<Thread>(std::move(child_ctx), e / lang::Block));
-    thread_append_node<graph::Spawn>(ctx, tid, node);
+      std::make_shared<Thread>(tid, std::move(child_ctx), e / lang::Block));
+    // thread_append_node<graph::Spawn>(ctx, tid, node);
 
     return tid;
   } else if (e == lang::Eq || e == lang::Neq) {
@@ -220,7 +199,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
         verbose << (**conflict) << std::endl;
         return TerminationStatus::datarace_exception;
       } else {
-        thread_append_node<graph::Join>(ctx, result, joinee->ctx.tail);
+        // thread_append_node<graph::Join>(ctx, result, joinee->ctx.tail);
       }
 
     } else {
@@ -254,7 +233,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
       return TerminationStatus::datarace_exception;
     }
 
-    thread_append_node<graph::Lock>(ctx, var, lock.last);
+    // thread_append_node<graph::Lock>(ctx, var, lock.last);
 
     verbose << "Locked " << var << std::endl;
   } else if (s == lang::Unlock) {
@@ -280,8 +259,8 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     // lock.globals = ctx.globals;
     lock.owner.reset();
 
-    thread_append_node<graph::Unlock>(ctx, var);
-    lock.last = ctx.tail;
+    // thread_append_node<graph::Unlock>(ctx, var);
+    // lock.last = ctx.tail;
 
     verbose << "Unlocked " << var << std::endl;
 
@@ -294,8 +273,8 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
         verbose << "Assertion passed: " << expr->location().view() << std::endl;
       } else {
         verbose << "Assertion failed: " << expr->location().view() << std::endl;
-        thread_append_node<graph::AssertionFailure>(
-            ctx, std::string(expr->location().view()));
+        // thread_append_node<graph::AssertionFailure>(
+        //     ctx, std::string(expr->location().view()));
         return TerminationStatus::assertion_failure_exception;
       }
     } else {
@@ -366,7 +345,7 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
   }
 
   thread->terminated = TerminationStatus::completed;
-  thread_append_node<graph::End>(ctx);
+  // thread_append_node<graph::End>(ctx);
   return TerminationStatus::completed;
 }
 
@@ -434,21 +413,18 @@ run_threads_to_sync(GlobalContext &gctx) {
   return any_progress;
 }
 
-bool is_finished(
-    std::variant<ProgressStatus, TerminationStatus> &prog_or_term) {
+static bool is_finished( std::variant<ProgressStatus, TerminationStatus> &prog_or_term) {
   // Either, the system is stuck and made no progress in which case there
   // is a deadlock (or a thread is stuck waiting for a crashed thread?)
-  if (ProgressStatus *prog = std::get_if<ProgressStatus>(&prog_or_term))
-    return (*prog) == ProgressStatus::no_progress;
-
   // Or, there was some termination criteria in which case we stop
-  return true;
+  return std::holds_alternative<TerminationStatus>(prog_or_term) ||
+         std::get<ProgressStatus>(prog_or_term) == ProgressStatus::no_progress;
 }
 
 /* Try to evaluate all threads until they have all terminated in some way
  * or we have reached a stuck configuration.
  */
-int run_threads(GlobalContext &gctx) {
+int run(GlobalContext gctx) {
   std::variant<ProgressStatus, TerminationStatus> prog_or_term;
   do {
     prog_or_term = run_threads_to_sync(gctx);
@@ -494,7 +470,7 @@ int run_threads(GlobalContext &gctx) {
       }
     } else {
       exception_detected = true;
-      thread_append_node<graph::End>(thread->ctx);
+      // thread_append_node<graph::End>(thread->ctx);
       verbose << "Thread " << i << " is stuck" << std::endl;
     }
   }
@@ -504,10 +480,7 @@ int run_threads(GlobalContext &gctx) {
 
 int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
   GlobalContext gctx(ast, make_protocol(sync_kind));
-  auto result = run_threads(gctx);
-  // gctx.print_execution_graph(output_path); FIXME
-
-  return result;
+  return run(std::move(gctx));
 }
 
 } // namespace gitmem

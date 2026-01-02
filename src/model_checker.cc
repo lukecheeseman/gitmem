@@ -182,7 +182,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
     for (const auto &ctx : failing_contexts) {
       auto path = build_output_path(output_path, idx++);
-      ctx->print_execution_graph(path);
+      // ctx->print_execution_graph(path);
     }
   }
 
@@ -193,7 +193,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
     for (const auto &ctx : deadlocked_contexts) {
       auto path = build_output_path(output_path, idx++);
-      ctx->print_execution_graph(path);
+      // ctx->print_execution_graph(path);
     }
   }
 

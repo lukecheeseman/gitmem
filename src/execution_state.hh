@@ -10,22 +10,16 @@
 #include "linear/version_store.hh"
 #include "branching/version_store.hh"
 #include "graphviz.hh"
+#include "termination_status.hh"
+#include "thread_trace.hh"
+#include "thread_id.hh"
 
 namespace gitmem {
 
 class SyncProtocol;
 
-enum class TerminationStatus {
-  completed,
-  datarace_exception,
-  unlock_exception,
-  assertion_failure_exception,
-  unassigned_variable_read_exception,
-};
-
 struct ThreadContext {
   std::unordered_map<std::string, size_t> locals;
-  std::shared_ptr<graph::Node> tail;
 
   struct LinearData {
     linear::LocalVersionStore store;
@@ -42,7 +36,7 @@ struct ThreadContext {
   ThreadContext(ThreadContext&&) = default;
   ThreadContext& operator=(ThreadContext&&) = default;
 
-  ThreadContext(std::shared_ptr<graph::Node> tail, SyncKind sync_kind);
+  ThreadContext(SyncKind sync_kind);
 
   bool operator==(const ThreadContext &other) const;
 
@@ -51,12 +45,13 @@ struct ThreadContext {
 
 struct Thread {
   ThreadContext ctx;
+  ThreadTrace trace;
   trieste::Node block;
   size_t pc = 0;
   std::optional<TerminationStatus> terminated = std::nullopt;
 
-  Thread(ThreadContext&& ctx, trieste::Node block):
-    ctx(std::move(ctx)), block(block) {};
+  Thread(ThreadID tid, ThreadContext&& ctx, trieste::Node block):
+    ctx(std::move(ctx)), trace(tid), block(block) {};
 
   Thread(const Thread&) = delete;
   Thread& operator=(const Thread&) = delete;
@@ -69,12 +64,8 @@ struct Thread {
   friend std::ostream& operator<<(std::ostream&, const Thread&);
 };
 
-using ThreadID = size_t;
-
 struct Lock {
-  // Globals globals;
   std::optional<ThreadID> owner = std::nullopt;
-  std::shared_ptr<graph::Node> last;
 };
 
 template <typename T, typename... Args>
@@ -93,7 +84,7 @@ struct GlobalContext {
   lang::NodeMap<size_t> cache;
 
   // Graph root
-  std::shared_ptr<graph::Node> entry_node;
+  // std::shared_ptr<graph::Node> entry_node;
 
   // Synchronisation semantics (policy)
   std::unique_ptr<SyncProtocol> protocol;
@@ -113,7 +104,7 @@ struct GlobalContext {
   void print(std::ostream& os, bool show_all = false) const;
   friend std::ostream& operator<<(std::ostream&, const GlobalContext&);
 
-  void print_execution_graph(const std::filesystem::path &output_path) const;
+  // void print_execution_graph(const std::filesystem::path &output_path) const;
 };
 
 } // namespace gitmem
