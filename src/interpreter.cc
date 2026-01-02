@@ -42,7 +42,7 @@ static bool is_syncing(Thread &thread) {
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
-std::variant<size_t, TerminationStatus>
+StepResult<size_t>
 Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
   ThreadContext& ctx = thread.ctx;
 
@@ -111,7 +111,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
  * counter (0 if waiting for some other thread) or the exceptional
  * termination status of the thread.
  */
-std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Thread& thread) {
+StepResult<int> Interpreter::run_statement(Node stmt, Thread& thread) {
   ThreadContext& ctx = thread.ctx;
 
   auto s = stmt / lang::Stmt;
@@ -299,7 +299,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
  * it terminates. Report whether the thread was able to progress or not, or
  * whether it terminated.
  */
-std::variant<ProgressStatus, TerminationStatus>
+StepResult<ProgressStatus>
 Interpreter::run_single_thread_to_sync(Thread& thread) {
   if (thread.terminated)
     return *thread.terminated;
@@ -359,7 +359,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
  * Run a thread to the next sync point, including any threads spawned by that
  * thread
  */
-std::variant<ProgressStatus, TerminationStatus>
+StepResult<ProgressStatus>
 Interpreter::progress_thread(Thread& thread) {
   auto no_threads = gctx.threads.size();
   auto prog_or_term = run_single_thread_to_sync(thread);
@@ -386,7 +386,7 @@ Interpreter::progress_thread(Thread& thread) {
 
 /* Try to evaluate all threads until a sync point or termination point
  */
-std::variant<ProgressStatus, TerminationStatus>
+StepResult<ProgressStatus>
 Interpreter::run_threads_to_sync() {
   verbose << "-----------------------" << std::endl;
   bool all_completed = true;
@@ -418,19 +418,19 @@ Interpreter::run_threads_to_sync() {
   return any_progress;
 }
 
-static bool is_finished( std::variant<ProgressStatus, TerminationStatus> &prog_or_term) {
+static bool is_finished(const StepResult<ProgressStatus>& r) {
   // Either, the system is stuck and made no progress in which case there
   // is a deadlock (or a thread is stuck waiting for a crashed thread?)
   // Or, there was some termination criteria in which case we stop
-  return std::holds_alternative<TerminationStatus>(prog_or_term) ||
-         std::get<ProgressStatus>(prog_or_term) == ProgressStatus::no_progress;
+  return is_terminated(r) ||
+         std::get<ProgressStatus>(r) == ProgressStatus::no_progress;
 }
 
 /* Try to evaluate all threads until they have all terminated in some way
  * or we have reached a stuck configuration.
  */
 int Interpreter::run() {
-  std::variant<ProgressStatus, TerminationStatus> prog_or_term;
+  StepResult<ProgressStatus> prog_or_term;
   do {
     prog_or_term = run_threads_to_sync();
   } while (!is_finished(prog_or_term));

@@ -98,7 +98,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
         // Run the thread to the next sync point
         verbose << "==== Thread " << i << " ====" << std::endl;
         auto prog_or_term = interp.progress_thread(thread);
-        if (std::holds_alternative<TerminationStatus>(prog_or_term)) {
+        if (is_terminated(prog_or_term)) {
           // Thread terminated, we can extend the trace
           made_progress = true;
           cursor = cursor->extend(i);
