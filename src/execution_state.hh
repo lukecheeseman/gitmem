@@ -78,7 +78,7 @@ thread_append_node<graph::Pending>(ThreadContext &ctx, std::string &&stmt);
 
 struct GlobalContext {
   // Execution state
-  std::vector<std::shared_ptr<Thread>> threads;
+  std::deque<Thread> threads;
   std::unordered_map<std::string, Lock> locks;
 
   // AST evaluation cache

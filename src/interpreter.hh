@@ -24,19 +24,16 @@ public:
   // Internal functions
   int run();
 
-  std::variant<size_t, TerminationStatus> evaluate_expression(trieste::Node, std::shared_ptr<Thread>);
-  std::variant<int, TerminationStatus> run_statement(trieste::Node, std::shared_ptr<Thread>);
+  std::variant<size_t, TerminationStatus> evaluate_expression(trieste::Node, Thread&);
+  std::variant<int, TerminationStatus> run_statement(trieste::Node, Thread&);
 
-  std::variant<ProgressStatus, TerminationStatus> progress_thread(std::shared_ptr<Thread>);
-  std::variant<ProgressStatus, TerminationStatus> run_single_thread_to_sync(std::shared_ptr<Thread>);
+  std::variant<ProgressStatus, TerminationStatus> progress_thread(Thread&);
+  std::variant<ProgressStatus, TerminationStatus> run_single_thread_to_sync(Thread&);
   std::variant<ProgressStatus, TerminationStatus> run_threads_to_sync();
 
 };
 
 // Entry function
 int interpret(const trieste::Node, const std::filesystem::path &output_file, SyncKind sync_kind);
-
-std::variant<ProgressStatus, TerminationStatus>
-progress_thread(GlobalContext &, const ThreadID, std::shared_ptr<Thread>);
 
 } // namespace gitmem

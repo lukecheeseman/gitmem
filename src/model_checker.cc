@@ -93,8 +93,8 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
     size_t no_threads = gctx.threads.size();
     bool made_progress = false;
     for (size_t i = start_idx; i < no_threads && !made_progress; ++i) {
-      auto thread = gctx.threads[i];
-      if (!thread->terminated) {
+      auto& thread = gctx.threads[i];
+      if (!thread.terminated) {
         // Run the thread to the next sync point
         verbose << "==== Thread " << i << " ====" << std::endl;
         auto prog_or_term = interp.progress_thread(thread);
@@ -127,13 +127,13 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
     bool all_completed = std::all_of(
         gctx.threads.begin(), gctx.threads.end(), [](const auto &thread) {
-          return thread->terminated &&
-                 *thread->terminated == TerminationStatus::completed;
+          return thread.terminated &&
+                 *thread.terminated == TerminationStatus::completed;
         });
     bool any_crashed = std::any_of(
         gctx.threads.begin(), gctx.threads.end(), [](const auto &thread) {
-          return thread->terminated &&
-                 *thread->terminated != TerminationStatus::completed;
+          return thread.terminated &&
+                 *thread.terminated != TerminationStatus::completed;
         });
 
     bool is_deadlock = !all_completed && !made_progress && cursor->is_leaf();

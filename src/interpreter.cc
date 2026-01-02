@@ -43,8 +43,8 @@ static bool is_syncing(Thread &thread) {
  * a the exceptional termination status of the thread.
  */
 std::variant<size_t, TerminationStatus>
-Interpreter::evaluate_expression(trieste::Node expr, std::shared_ptr<Thread> thread) {
-  ThreadContext& ctx = thread->ctx;
+Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
+  ThreadContext& ctx = thread.ctx;
 
   auto e = expr / lang::Expr;
   if (e == lang::Reg) {
@@ -82,8 +82,7 @@ Interpreter::evaluate_expression(trieste::Node expr, std::shared_ptr<Thread> thr
       throw std::logic_error("This code path should never be reached");
     }
 
-    gctx.threads.push_back(
-      std::make_shared<Thread>(tid, std::move(child_ctx), e / lang::Block));
+    gctx.threads.emplace_back(tid, std::move(child_ctx), e / lang::Block);
     // thread_append_node<graph::Spawn>(ctx, tid, node);
 
     return tid;
@@ -112,8 +111,8 @@ Interpreter::evaluate_expression(trieste::Node expr, std::shared_ptr<Thread> thr
  * counter (0 if waiting for some other thread) or the exceptional
  * termination status of the thread.
  */
-std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::shared_ptr<Thread> thread) {
-  ThreadContext& ctx = thread->ctx;
+std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Thread& thread) {
+  ThreadContext& ctx = thread.ctx;
 
   auto s = stmt / lang::Stmt;
   if (s == lang::Nop) {
@@ -193,10 +192,17 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::
     }
 
     auto result = gctx.cache[expr];
+    // Check if the thread ID is valid
+    if (result >= gctx.threads.size()) {
+        verbose << "Join: invalid thread ID " << result
+                << ". gctx.threads.size()=" << gctx.threads.size() << std::endl;
+        return TerminationStatus::unassigned_variable_read_exception;
+    }
+
     auto &joinee = gctx.threads[result];
-    if (joinee->terminated &&
-        (*joinee->terminated == TerminationStatus::completed)) {
-      if (auto conflict = gctx.protocol->on_join(ctx, joinee->ctx, gctx)) {
+    if (joinee.terminated &&
+        (*joinee.terminated == TerminationStatus::completed)) {
+      if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx, gctx)) {
         verbose << (**conflict) << std::endl;
         return TerminationStatus::datarace_exception;
       } else {
@@ -221,7 +227,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::
       return 0;
     }
 
-    lock.owner = thread->tid;
+    lock.owner = thread.tid;
     if (auto conflict = gctx.protocol->on_lock(ctx, lock, gctx)) {
       verbose << (**conflict) << std::endl;
       //     using graph::Node;
@@ -248,7 +254,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::
     auto var = std::string(v->location().view());
 
     auto &lock = gctx.locks[var];
-    if (!lock.owner || (lock.owner && *lock.owner != thread->tid)) {
+    if (!lock.owner || (lock.owner && *lock.owner != thread.tid)) {
       return TerminationStatus::unlock_exception;
     }
 
@@ -294,13 +300,13 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::
  * whether it terminated.
  */
 std::variant<ProgressStatus, TerminationStatus>
-Interpreter::run_single_thread_to_sync(std::shared_ptr<Thread> thread) {
-  if (thread->terminated)
-    return *thread->terminated;
+Interpreter::run_single_thread_to_sync(Thread& thread) {
+  if (thread.terminated)
+    return *thread.terminated;
 
-  auto& ctx = thread->ctx;
-  auto& pc  = thread->pc;
-  Node block = thread->block;
+  auto& ctx = thread.ctx;
+  auto& pc  = thread.pc;
+  Node block = thread.block;
 
   // Initial sync when thread starts executing
   if (pc == 0)
@@ -318,7 +324,7 @@ Interpreter::run_single_thread_to_sync(std::shared_ptr<Thread> thread) {
     auto result = run_statement(stmt, thread);
 
     if (auto term = std::get_if<TerminationStatus>(&result)) {
-      thread->terminated = *term;
+      thread.terminated = *term;
       return *term;
     }
 
@@ -340,11 +346,11 @@ Interpreter::run_single_thread_to_sync(std::shared_ptr<Thread> thread) {
   // Otherwise, we truly reached the end this iteration
   if (auto conflict = gctx.protocol->on_end(ctx, gctx)) {
     verbose << (**conflict) << std::endl;
-    thread->terminated = TerminationStatus::datarace_exception;
+    thread.terminated = TerminationStatus::datarace_exception;
     return TerminationStatus::datarace_exception;
   }
 
-  thread->terminated = TerminationStatus::completed;
+  thread.terminated = TerminationStatus::completed;
   // thread_append_node<graph::End>(ctx);
   return TerminationStatus::completed;
 }
@@ -354,7 +360,7 @@ Interpreter::run_single_thread_to_sync(std::shared_ptr<Thread> thread) {
  * thread
  */
 std::variant<ProgressStatus, TerminationStatus>
-Interpreter::progress_thread(std::shared_ptr<Thread> thread) {
+Interpreter::progress_thread(Thread& thread) {
   auto no_threads = gctx.threads.size();
   auto prog_or_term = run_single_thread_to_sync(thread);
 
@@ -365,8 +371,8 @@ Interpreter::progress_thread(std::shared_ptr<Thread> thread) {
   for (size_t i = no_threads; i < gctx.threads.size(); ++i) {
     // If there are new threads, we can run them to sync as well
     any_progress = true;
-    auto new_thread = gctx.threads[i];
-    if (!is_syncing(*new_thread)) {
+    auto& new_thread = gctx.threads[i];
+    if (!is_syncing(new_thread)) {
       verbose << "==== Thread " << i << " (spawn) ====" << std::endl;
       progress_thread(new_thread);
     }
@@ -387,19 +393,19 @@ Interpreter::run_threads_to_sync() {
   ProgressStatus any_progress = ProgressStatus::no_progress;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
     verbose << "==== t" << i << " ====" << std::endl;
-    auto thread = gctx.threads[i];
-    if (!thread->terminated) {
+    auto& thread = gctx.threads[i];
+    if (!thread.terminated) {
       auto prog_or_term = run_single_thread_to_sync(thread);
       if (ProgressStatus *prog = std::get_if<ProgressStatus>(&prog_or_term)) {
         any_progress |= *prog;
       } else {
         // We could return termination status of any error here and stop
         // at the first error
-        thread->terminated = std::get<TerminationStatus>(prog_or_term);
+        thread.terminated = std::get<TerminationStatus>(prog_or_term);
         any_progress |= ProgressStatus::progress;
       }
 
-      all_completed &= thread->terminated.has_value();
+      all_completed &= thread.terminated.has_value();
       // if a thread spawns a new thread, it will end up at the end so
       // we will always include the new threads in the termination
       // criteria
@@ -434,8 +440,8 @@ int Interpreter::run() {
   bool exception_detected = false;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
     const auto &thread = gctx.threads[i];
-    if (thread->terminated) {
-      switch (thread->terminated.value()) {
+    if (thread.terminated) {
+      switch (thread.terminated.value()) {
       case TerminationStatus::completed:
         verbose << "Thread " << i << " terminated normally" << std::endl;
         break;

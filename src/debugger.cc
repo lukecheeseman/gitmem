@@ -79,8 +79,8 @@ bool step_thread(ThreadID tid, GlobalContext &gctx, std::string &msg) {
     return false;
   }
 
-  auto thread = gctx.threads[tid];
-  if (auto term = thread->terminated) {
+  auto& thread = gctx.threads[tid];
+  if (auto term = thread.terminated) {
     if (*term == TerminationStatus::completed) {
       msg = "Thread " + std::to_string(tid) + " has terminated normally";
     } else {

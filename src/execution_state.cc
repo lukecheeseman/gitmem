@@ -68,9 +68,8 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
   ThreadContext starting_ctx(this->protocol->kind());
 
   ThreadID main_tid = 0;
-  auto main_thread = std::make_shared<Thread>(main_tid, std::move(starting_ctx), starting_block);
 
-  this->threads = {main_thread};
+  this->threads.emplace_back(main_tid, std::move(starting_ctx), starting_block);
   this->locks = {};
   this->cache = {};
 }
@@ -109,8 +108,8 @@ bool GlobalContext::operator==(const GlobalContext &other) const {
   for (auto &thread : threads) {
     auto it = std::find_if(other.threads.begin(), other.threads.end(),
                             [&thread](auto &t)
-                            { return t->block == thread->block; });
-    if (it == other.threads.end() || !(*thread == **it))
+                            { return t.block == thread.block; });
+    if (it == other.threads.end() || !(thread == *it))
       return false;
   }
 
@@ -196,11 +195,11 @@ void GlobalContext::print(std::ostream& os, bool show_all) const {
 
   bool showed_any = false;
   for (size_t i = 0; i < threads.size(); i++) {
-    auto thread = threads[i];
-    if (show_all || !thread->terminated ||
-        *threads[i]->terminated != TerminationStatus::completed) {
+    auto& thread = threads[i];
+    if (show_all || !thread.terminated ||
+        *threads[i].terminated != TerminationStatus::completed) {
       os << "---- Thread " << i << std::endl;
-      os << *threads[i] << std::endl;
+      os << threads[i] << std::endl;
       os << std::endl;
       showed_any = true;
     }
