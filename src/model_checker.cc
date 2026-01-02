@@ -59,8 +59,6 @@ build_output_path(const std::filesystem::path &output_path, const size_t idx) {
  * for each distinct final state that led to an error.
  */
 int model_check(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
-  GlobalContext gctx(ast, make_protocol(sync_kind));
-
   auto final_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto failing_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto deadlocked_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
@@ -73,7 +71,11 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
   auto cursor = root;
   auto current_trace = std::vector<size_t>{0}; // Start with the main thread
   verbose << "==== Thread " << cursor->tid_ << " ====" << std::endl;
-  progress_thread(gctx, cursor->tid_, gctx.threads[cursor->tid_]);
+
+  Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
+
+  GlobalContext& gctx = interp.context();
+  interp.progress_thread(gctx.threads[cursor->tid_]);
 
   while (!root->complete) {
     while (!cursor->children.empty() && !cursor->children.back()->complete) {
@@ -82,7 +84,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
       current_trace.push_back(cursor->tid_);
       verbose << "==== Thread " << cursor->tid_
               << " (replay) ====" << std::endl;
-      progress_thread(gctx, cursor->tid_, gctx.threads[cursor->tid_]);
+      interp.progress_thread(gctx.threads[cursor->tid_]);
     }
 
     // Try to find a thread to schedule next
@@ -95,7 +97,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
       if (!thread->terminated) {
         // Run the thread to the next sync point
         verbose << "==== Thread " << i << " ====" << std::endl;
-        auto prog_or_term = progress_thread(gctx, i, thread);
+        auto prog_or_term = interp.progress_thread(thread);
         if (std::holds_alternative<TerminationStatus>(prog_or_term)) {
           // Thread terminated, we can extend the trace
           made_progress = true;
@@ -141,6 +143,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
       if (!std::any_of(
               final_contexts.begin(), final_contexts.end(),
               [&gctx](const std::shared_ptr<GlobalContext> &state) { return *state == gctx; })) {
+        // Here we take ownership of the global context
         std::shared_ptr<GlobalContext> gctxp = std::make_shared<GlobalContext>(std::move(gctx));
         final_contexts.push_back(gctxp);
         final_traces.push_back(current_trace);
@@ -159,14 +162,15 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
     if (cursor->complete && !root->complete) {
       // Reset the cursor to the root and start a new trace
       verbose << std::endl << "Restarting trace..." << std::endl;
-      gctx = GlobalContext(ast, make_protocol(sync_kind));
+      interp = Interpreter(GlobalContext(ast, make_protocol(sync_kind)));
+      GlobalContext& gctx = interp.context();
 
       cursor = root;
       current_trace.clear();
       current_trace.push_back(0); // Start with the main thread again
       verbose << "==== Thread " << cursor->tid_
               << " (replay) ====" << std::endl;
-      progress_thread(gctx, cursor->tid_, gctx.threads[cursor->tid_]);
+      interp.progress_thread(gctx.threads[cursor->tid_]);
     }
   }
 

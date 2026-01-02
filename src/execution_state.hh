@@ -44,6 +44,7 @@ struct ThreadContext {
 };
 
 struct Thread {
+  ThreadID tid;
   ThreadContext ctx;
   ThreadTrace trace;
   trieste::Node block;
@@ -51,7 +52,7 @@ struct Thread {
   std::optional<TerminationStatus> terminated = std::nullopt;
 
   Thread(ThreadID tid, ThreadContext&& ctx, trieste::Node block):
-    ctx(std::move(ctx)), trace(tid), block(block) {};
+    tid(tid), ctx(std::move(ctx)), trace(tid), block(block) {};
 
   Thread(const Thread&) = delete;
   Thread& operator=(const Thread&) = delete;
@@ -92,6 +93,8 @@ struct GlobalContext {
   GlobalContext(const trieste::Node &ast,
                 std::unique_ptr<SyncProtocol> protocol);
   ~GlobalContext();
+
+  GlobalContext clone() const;
 
   GlobalContext(GlobalContext&&) = default;
   GlobalContext& operator=(GlobalContext&&) = default;

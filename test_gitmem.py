@@ -33,12 +33,9 @@ def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
       text=True
     )
     if should_accept:
-      # Accept tests pass if exit code is 0
       accepted = (result.returncode == 0)
     else:
-      # Reject tests pass only if exit code is 1
       accepted = (result.returncode == 1)
-
   except FileNotFoundError:
     print(f"Error: '{gitmem_path}' executable not found.")
     sys.exit(1)
@@ -54,10 +51,25 @@ def main():
     required=True,
     help="Path to the gitmem executable"
   )
+  parser.add_argument(
+    "--linear",
+    action="store_true",
+    help="Only run linear tests"
+  )
+  parser.add_argument(
+    "--branching",
+    action="store_true",
+    help="Only run branching tests"
+  )
   args = parser.parse_args()
   gitmem_path = args.gitmem
+  run_linear = args.linear
+  run_branching = args.branching
 
-  # results[expectation][category][subcategory] = {"total": x, "failed": y}
+  # If neither flag is specified, run both
+  if not run_linear and not run_branching:
+    run_linear = run_branching = True
+
   results = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {
     "total": 0,
     "failed": 0
@@ -76,7 +88,11 @@ def main():
         continue
 
       if category == "semantics":
-        subcategories = ["branching", "linear"]
+        subcategories = []
+        if run_branching:
+          subcategories.append("branching")
+        if run_linear:
+          subcategories.append("linear")
       else:
         subcategories = [None]
 

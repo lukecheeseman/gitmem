@@ -25,12 +25,12 @@ using namespace trieste;
  * - t unlocking a lock l, which updates l to have t's versioned memory
  */
 
-bool is_syncing(Node stmt) {
+static bool is_syncing(Node stmt) {
   auto s = stmt / lang::Stmt;
   return s == lang::Join || s == lang::Lock || s == lang::Unlock;
 }
 
-bool is_syncing(Thread &thread) {
+static bool is_syncing(Thread &thread) {
   // Can only be true if a thread hasn't terminated
   // Either it has executed all statements but not yet terminated (and my sync)
   // Or it is at a synchronisation node
@@ -43,7 +43,9 @@ bool is_syncing(Thread &thread) {
  * a the exceptional termination status of the thread.
  */
 std::variant<size_t, TerminationStatus>
-evaluate_expression(trieste::Node expr, GlobalContext &gctx, ThreadContext &ctx) {
+Interpreter::evaluate_expression(trieste::Node expr, std::shared_ptr<Thread> thread) {
+  ThreadContext& ctx = thread->ctx;
+
   auto e = expr / lang::Expr;
   if (e == lang::Reg) {
     // It is invalid to read a previously unwritten value
@@ -65,7 +67,7 @@ evaluate_expression(trieste::Node expr, GlobalContext &gctx, ThreadContext &ctx)
   } else if (e == lang::Add) {
     size_t sum = 0;
     for (auto &child : *e) {
-      auto result = evaluate_expression(child, gctx, ctx);
+      auto result = evaluate_expression(child, thread);
       if (std::holds_alternative<TerminationStatus>(result))
         return result;
       sum += std::get<size_t>(result);
@@ -89,11 +91,11 @@ evaluate_expression(trieste::Node expr, GlobalContext &gctx, ThreadContext &ctx)
     auto lhs = e / lang::Lhs;
     auto rhs = e / lang::Rhs;
 
-    auto lhsEval = evaluate_expression(lhs, gctx, ctx);
+    auto lhsEval = evaluate_expression(lhs, thread);
     if (std::holds_alternative<TerminationStatus>(lhsEval))
       return lhsEval;
 
-    auto rhsEval = evaluate_expression(rhs, gctx, ctx);
+    auto rhsEval = evaluate_expression(rhs, thread);
     if (std::holds_alternative<TerminationStatus>(rhsEval))
       return rhsEval;
 
@@ -110,10 +112,9 @@ evaluate_expression(trieste::Node expr, GlobalContext &gctx, ThreadContext &ctx)
  * counter (0 if waiting for some other thread) or the exceptional
  * termination status of the thread.
  */
-std::variant<int, TerminationStatus> run_statement(Node stmt,
-                                                   GlobalContext &gctx,
-                                                   ThreadContext &ctx,
-                                                   const ThreadID &tid) {
+std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, std::shared_ptr<Thread> thread) {
+  ThreadContext& ctx = thread->ctx;
+
   auto s = stmt / lang::Stmt;
   if (s == lang::Nop) {
 
@@ -130,7 +131,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
 
     auto expr = s / lang::Expr;
     auto cnst = s / lang::Const;
-    auto result = evaluate_expression(expr, gctx, ctx);
+    auto result = evaluate_expression(expr, thread);
 
     if (auto b = std::get_if<size_t>(&result)) {
       auto delta = std::stoi(std::string(cnst->location().view()));
@@ -145,7 +146,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     auto lhs = s / lang::LVal;
     auto var = std::string(lhs->location().view());
     auto rhs = s / lang::Expr;
-    auto val_or_term = evaluate_expression(rhs, gctx, ctx);
+    auto val_or_term = evaluate_expression(rhs, thread);
 
     if (size_t *val = std::get_if<size_t>(&val_or_term)) {
       if (lhs == lang::Reg) {
@@ -183,7 +184,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     auto expr = s / lang::Expr;
 
     if (!gctx.cache.contains(expr)) {
-      auto val_or_term = evaluate_expression(expr, gctx, ctx);
+      auto val_or_term = evaluate_expression(expr, thread);
       if (size_t *val = std::get_if<size_t>(&val_or_term)) {
         gctx.cache[expr] = *val;
       } else {
@@ -220,7 +221,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
       return 0;
     }
 
-    lock.owner = tid;
+    lock.owner = thread->tid;
     if (auto conflict = gctx.protocol->on_lock(ctx, lock, gctx)) {
       verbose << (**conflict) << std::endl;
       //     using graph::Node;
@@ -247,7 +248,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
     auto var = std::string(v->location().view());
 
     auto &lock = gctx.locks[var];
-    if (!lock.owner || (lock.owner && *lock.owner != tid)) {
+    if (!lock.owner || (lock.owner && *lock.owner != thread->tid)) {
       return TerminationStatus::unlock_exception;
     }
 
@@ -267,7 +268,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
   } else if (s == lang::Assert) {
 
     auto expr = s / lang::Expr;
-    auto result_or_term = evaluate_expression(expr, gctx, ctx);
+    auto result_or_term = evaluate_expression(expr, thread);
     if (size_t *result = std::get_if<size_t>(&result_or_term)) {
       if (*result) {
         verbose << "Assertion passed: " << expr->location().view() << std::endl;
@@ -293,8 +294,7 @@ std::variant<int, TerminationStatus> run_statement(Node stmt,
  * whether it terminated.
  */
 std::variant<ProgressStatus, TerminationStatus>
-run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
-                          std::shared_ptr<Thread> thread) {
+Interpreter::run_single_thread_to_sync(std::shared_ptr<Thread> thread) {
   if (thread->terminated)
     return *thread->terminated;
 
@@ -315,7 +315,7 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
     if (made_progress && is_syncing(stmt))
       return ProgressStatus::progress;
 
-    auto result = run_statement(stmt, gctx, ctx, tid);
+    auto result = run_statement(stmt, thread);
 
     if (auto term = std::get_if<TerminationStatus>(&result)) {
       thread->terminated = *term;
@@ -354,10 +354,9 @@ run_single_thread_to_sync(GlobalContext &gctx, const ThreadID tid,
  * thread
  */
 std::variant<ProgressStatus, TerminationStatus>
-progress_thread(GlobalContext &gctx, const ThreadID tid,
-                std::shared_ptr<Thread> thread) {
+Interpreter::progress_thread(std::shared_ptr<Thread> thread) {
   auto no_threads = gctx.threads.size();
-  auto prog_or_term = run_single_thread_to_sync(gctx, tid, thread);
+  auto prog_or_term = run_single_thread_to_sync(thread);
 
   bool any_progress =
       std::holds_alternative<ProgressStatus>(prog_or_term) &&
@@ -369,7 +368,7 @@ progress_thread(GlobalContext &gctx, const ThreadID tid,
     auto new_thread = gctx.threads[i];
     if (!is_syncing(*new_thread)) {
       verbose << "==== Thread " << i << " (spawn) ====" << std::endl;
-      progress_thread(gctx, i, new_thread);
+      progress_thread(new_thread);
     }
   }
 
@@ -382,7 +381,7 @@ progress_thread(GlobalContext &gctx, const ThreadID tid,
 /* Try to evaluate all threads until a sync point or termination point
  */
 std::variant<ProgressStatus, TerminationStatus>
-run_threads_to_sync(GlobalContext &gctx) {
+Interpreter::run_threads_to_sync() {
   verbose << "-----------------------" << std::endl;
   bool all_completed = true;
   ProgressStatus any_progress = ProgressStatus::no_progress;
@@ -390,7 +389,7 @@ run_threads_to_sync(GlobalContext &gctx) {
     verbose << "==== t" << i << " ====" << std::endl;
     auto thread = gctx.threads[i];
     if (!thread->terminated) {
-      auto prog_or_term = run_single_thread_to_sync(gctx, i, thread);
+      auto prog_or_term = run_single_thread_to_sync(thread);
       if (ProgressStatus *prog = std::get_if<ProgressStatus>(&prog_or_term)) {
         any_progress |= *prog;
       } else {
@@ -424,10 +423,10 @@ static bool is_finished( std::variant<ProgressStatus, TerminationStatus> &prog_o
 /* Try to evaluate all threads until they have all terminated in some way
  * or we have reached a stuck configuration.
  */
-int run(GlobalContext gctx) {
+int Interpreter::run() {
   std::variant<ProgressStatus, TerminationStatus> prog_or_term;
   do {
-    prog_or_term = run_threads_to_sync(gctx);
+    prog_or_term = run_threads_to_sync();
   } while (!is_finished(prog_or_term));
 
   verbose << "----------- execution complete -----------" << std::endl;
@@ -480,7 +479,8 @@ int run(GlobalContext gctx) {
 
 int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
   GlobalContext gctx(ast, make_protocol(sync_kind));
-  return run(std::move(gctx));
+  Interpreter interp(std::move(gctx));
+  return interp.run();
 }
 
 } // namespace gitmem

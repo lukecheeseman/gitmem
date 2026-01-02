@@ -8,8 +8,30 @@
 #include <trieste/trieste.h>
 #include "sync_protocol.hh"
 #include "termination_status.hh"
+#include "step_result.hh"
 
 namespace gitmem {
+
+class Interpreter {
+private:
+  GlobalContext gctx;
+
+public:
+  Interpreter(GlobalContext gctx): gctx(std::move(gctx)) {}
+
+  GlobalContext& context() { return gctx; }
+
+  // Internal functions
+  int run();
+
+  std::variant<size_t, TerminationStatus> evaluate_expression(trieste::Node, std::shared_ptr<Thread>);
+  std::variant<int, TerminationStatus> run_statement(trieste::Node, std::shared_ptr<Thread>);
+
+  std::variant<ProgressStatus, TerminationStatus> progress_thread(std::shared_ptr<Thread>);
+  std::variant<ProgressStatus, TerminationStatus> run_single_thread_to_sync(std::shared_ptr<Thread>);
+  std::variant<ProgressStatus, TerminationStatus> run_threads_to_sync();
+
+};
 
 // Entry function
 int interpret(const trieste::Node, const std::filesystem::path &output_file, SyncKind sync_kind);
