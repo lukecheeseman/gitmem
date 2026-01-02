@@ -70,167 +70,251 @@ Command parse_command(std::string &input) {
   }
 }
 
-/** Perform the Step command on a given thread. Error messages are assigned
- * to `msg`. The return value signals whether threads should be printed
- * after stepping or not.  */
-bool step_thread(ThreadID tid, GlobalContext &gctx, std::string &msg) {
+enum class StepKind {
+  Progressed,   // Thread made progress
+  Blocked,      // Thread is blocked on sync
+  Terminated,   // Thread terminated this step
+  Invalid       // Invalid thread id, etc.
+};
+
+struct StepUIResult {
+  StepKind kind;
+  std::optional<TerminationStatus> termination;
+  std::string message;
+
+  static StepUIResult progressed() {
+    return {StepKind::Progressed, std::nullopt, ""};
+  }
+
+  static StepUIResult blocked(std::string msg) {
+    return {StepKind::Blocked, std::nullopt, std::move(msg)};
+  }
+
+  static StepUIResult terminated(TerminationStatus t, std::string msg) {
+    return {StepKind::Terminated, t, std::move(msg)};
+  }
+
+  static StepUIResult invalid(std::string msg) {
+    return {StepKind::Invalid, std::nullopt, std::move(msg)};
+  }
+};
+
+StepUIResult step_thread(Interpreter& interp, ThreadID tid) {
+  GlobalContext& gctx = interp.context();
+
   if (tid >= gctx.threads.size()) {
-    msg = "Invalid thread id: " + std::to_string(tid);
-    return false;
+    return StepUIResult::invalid(
+        "Invalid thread id: " + std::to_string(tid));
   }
 
   auto& thread = gctx.threads[tid];
-  if (auto term = thread.terminated) {
-    if (*term == TerminationStatus::completed) {
-      msg = "Thread " + std::to_string(tid) + " has terminated normally";
+
+  if (thread.terminated) {
+    if (*thread.terminated == TerminationStatus::completed) {
+      return StepUIResult::terminated(
+          *thread.terminated,
+          "Thread " + std::to_string(tid) + " has terminated normally");
     } else {
-      msg = "Thread " + std::to_string(tid) + " has terminated with an error";
+      return StepUIResult::terminated(
+          *thread.terminated,
+          "Thread " + std::to_string(tid) + " has terminated with an error");
     }
-    return false;
   }
 
-  auto prog_or_term = progress_thread(gctx, tid, thread);
-  if (ProgressStatus *prog = std::get_if<ProgressStatus>(&prog_or_term)) {
-    if (!*prog) {
-      auto stmt = thread->block->at(thread->pc);
-      msg = "Thread " + std::to_string(tid) + " is blocking on '" +
-            std::string(stmt->location().view()) + "'";
-      return false;
+  auto prog_or_term = interp.progress_thread(gctx.threads[tid]);
+
+  if (auto prog = std::get_if<ProgressStatus>(&prog_or_term)) {
+    if (*prog == ProgressStatus::no_progress) {
+      auto stmt = thread.block->at(thread.pc);
+      return StepUIResult::blocked(
+          "Thread " + std::to_string(tid) + " is blocking on '" +
+          std::string(stmt->location().view()) + "'");
     }
-  } else if (TerminationStatus *term =
-                 std::get_if<TerminationStatus>(&prog_or_term)) {
-    switch (*term) {
-    case TerminationStatus::completed:
-      msg = "Thread " + std::to_string(tid) + " terminated normally";
-      return true;
-    case TerminationStatus::datarace_exception:
-      // TODO: Say on which variable the datarace occurred. To
-      // do this, have pull return an optional variable that
-      // is in a race and have the data race exception
-      // remember that variable.
-      msg = "Thread " + std::to_string(tid) +
-            " encountered a data race and was terminated";
-      return false;
-    case TerminationStatus::assertion_failure_exception: {
-      auto expr = thread->block->at(thread->pc) / lang::Stmt / lang::Expr;
-      msg = "Thread " + std::to_string(tid) + " failed assertion '" +
-            std::string(expr->location().view()) + "' and was terminated";
-      return false;
-    }
-    case TerminationStatus::unassigned_variable_read_exception:
-      throw std::runtime_error("Thread " + std::to_string(tid) +
-                               " read an uninitialised variable");
-    case TerminationStatus::unlock_exception:
-      throw std::runtime_error("Thread " + std::to_string(tid) +
-                               " unlocked an unlocked lock");
-    default:
-      throw std::runtime_error("Thread " + std::to_string(tid) +
-                               " has an unhandled termination state");
-    }
+    return StepUIResult::progressed();
   }
-  return true;
+
+  auto term = std::get<TerminationStatus>(prog_or_term);
+
+  switch (term) {
+    case TerminationStatus::completed:
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) + " terminated normally");
+
+    case TerminationStatus::datarace_exception:
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) +
+          " encountered a data race and was terminated");
+
+    case TerminationStatus::assertion_failure_exception: {
+      auto expr =
+          thread.block->at(thread.pc) / lang::Stmt / lang::Expr;
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) +
+          " failed assertion '" +
+          std::string(expr->location().view()) +
+          "' and was terminated");
+    }
+
+    case TerminationStatus::unassigned_variable_read_exception:
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) +
+          " read an uninitialised variable");
+
+    case TerminationStatus::unlock_exception:
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) +
+          " unlocked a lock it does not own");
+
+    default:
+      return StepUIResult::terminated(
+          term,
+          "Thread " + std::to_string(tid) +
+          " terminated with an unknown error");
+  }
 }
 
-/** Interpret the AST in an interactive way, letting the user choose which
- * thread to schedule next. */
+/** Print the execution graph if requested */
+void maybe_print_graph(Interpreter& interp,
+                       bool print_graphs,
+                       const std::filesystem::path &output_file) {
+    if (print_graphs) {
+        // gctx.print_execution_graph(output_file);
+        verbose << "Execution graph written to " << output_file << std::endl;
+    }
+}
+
+/** Step a single thread and return the StepUIResult. Also prints the message. */
+StepUIResult do_step(Interpreter &interp,
+                   ThreadID tid,
+                   bool print_graphs,
+                   const std::filesystem::path &output_file) {
+    StepUIResult result = step_thread(interp, tid);
+    if (!result.message.empty())
+        std::cout << result.message << std::endl;
+
+    maybe_print_graph(interp, print_graphs, output_file);
+    return result;
+}
+
+/** Reset the interpreter to a fresh state */
+void do_restart(Interpreter &interp,
+                const trieste::Node ast,
+                SyncKind sync_kind,
+                bool print_graphs,
+                const std::filesystem::path &output_file) {
+    interp = Interpreter(GlobalContext(ast, make_protocol(sync_kind)));
+    maybe_print_graph(interp, print_graphs, output_file);
+}
+
+/** Print the list of threads and optionally all threads */
+void do_list(GlobalContext &gctx, bool show_all) {
+    gctx.print(std::cout, show_all);
+}
+
+void do_finish(Interpreter& interp, bool print_graphs, const std::filesystem::path &output_file) {
+  if (!interp.run()) {
+    std::cout << "Program finished successfully" << std::endl;
+  } else {
+    std::cout << "Program terminated with an error" << std::endl;
+  }
+
+  maybe_print_graph(interp, print_graphs, output_file);
+}
+
+/** Print interactive command help */
+void print_help() {
+    std::cout << "Commands:\n";
+    std::cout << "s [tid] - Step to next sync point in thread\n";
+    std::cout << "[tid]   - Step to next sync point in thread\n";
+    std::cout << "f      - Finish the program\n";
+    std::cout << "r      - Restart the program\n";
+    std::cout << "l      - List all threads\n";
+    std::cout << "g      - Toggle automatic execution graph printing\n";
+    std::cout << "p      - Print the execution graph immediately\n";
+    std::cout << "q      - Quit the interpreter\n";
+    std::cout << "?      - Display this help message\n";
+}
+
+/** Main interactive interpreter loop */
 int interpret_interactive(const trieste::Node ast,
                           const std::filesystem::path &output_file,
                           SyncKind sync_kind) {
-  GlobalContext gctx(ast, make_protocol(sync_kind));
+    Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
+    GlobalContext &gctx = interp.context();
 
-  size_t prev_no_threads = 1;
-  Command command = {Command::List};
-  std::string msg = "";
-  bool print_graphs = true;
-  // gctx.print_execution_graph(output_file);
-  while (command.cmd != Command::Quit) {
-    if (command.cmd != Command::Skip ||
-        prev_no_threads != gctx.threads.size()) {
-      bool show_all = command.cmd == Command::List;
-      gctx.print(std::cout, show_all);
+    size_t prev_no_threads = 1;
+    Command command = {Command::List};
+    bool print_graphs = true;
+
+    while (command.cmd != Command::Quit) {
+        // Print threads if new threads appeared or command is List
+        if (command.cmd != Command::Skip || prev_no_threads != gctx.threads.size()) {
+            do_list(gctx, command.cmd == Command::List);
+        }
+        prev_no_threads = gctx.threads.size();
+
+        // Read user input
+        std::cout << "> ";
+        std::string input;
+        std::getline(std::cin, input);
+        if (!input.empty() && input.find_first_not_of(" \t\n\r") != std::string::npos)
+            command = parse_command(input);
+
+        switch (command.cmd) {
+            case Command::Step: {
+                ThreadID tid = command.argument;
+                StepUIResult res = do_step(interp, tid, print_graphs, output_file);
+                if (res.kind != StepKind::Progressed)
+                    command = {Command::Skip};
+                break;
+            }
+
+            case Command::Finish:
+                do_finish(interp, print_graphs, output_file);
+                break;
+
+            case Command::Restart:
+                do_restart(interp, ast, sync_kind, print_graphs, output_file);
+                command = {Command::List};
+                break;
+
+            case Command::List:
+                // Already handled before reading input, no-op here
+                break;
+
+            case Command::Graph:
+                print_graphs = !print_graphs;
+                std::cout << "Graphs " << (print_graphs ? "will" : "won't")
+                          << " print automatically" << std::endl;
+                command = {Command::Skip};
+                break;
+
+            case Command::Print:
+                maybe_print_graph(interp, print_graphs, output_file);
+                command = {Command::Skip};
+                break;
+
+            case Command::Info:
+                print_help();
+                command = {Command::Skip};
+                break;
+
+            case Command::Skip:
+                // No-op
+                break;
+
+            case Command::Quit:
+                // No-op
+                break;
+        }
     }
-    prev_no_threads = gctx.threads.size();
 
-    if (!msg.empty()) {
-      std::cout << msg << std::endl;
-      msg.clear();
-    }
-
-    std::cout << "> ";
-    std::string input;
-    std::getline(std::cin, input);
-    if (!input.empty() &&
-        input.find_first_not_of(" \t\n\r") != std::string::npos) {
-      command = parse_command(input);
-    }
-
-    if (command.cmd == Command::Step) {
-      auto tid = command.argument;
-      if (!step_thread(tid, gctx, msg))
-        command = {Command::Skip};
-
-      if (print_graphs) {
-        // gctx.print_execution_graph(output_file);
-        assert(false && "todo");
-        verbose << "Execution graph written to " << output_file << std::endl;
-      }
-    } else if (command.cmd == Command::Finish) {
-      // Finish the program
-      assert(false && "fixme");
-      // if (!run_threads(gctx))
-      //   msg = "Program finished successfully";
-      // else
-      //   msg = "Program terminated with an error";
-
-      if (print_graphs) {
-        // gctx.print_execution_graph(output_file);
-        assert(false && "todo");
-        verbose << "Execution graph written to " << output_file << std::endl;
-      }
-    } else if (command.cmd == Command::Restart) {
-      // Start the program from the beginning
-      gctx = GlobalContext(ast, make_protocol(sync_kind));
-      command = {Command::List};
-      if (print_graphs) {
-        // gctx.print_execution_graph(output_file);
-        assert(false && "todo");
-        verbose << "Execution graph written to " << output_file << std::endl;
-      }
-    } else if (command.cmd == Command::List) {
-      // Listing is a no-op
-    } else if (command.cmd == Command::Graph) {
-      // Toggle printing execution graph automatically
-      print_graphs = !print_graphs;
-      std::cout << "graphs " << (print_graphs ? "will" : "won't")
-                << " print automatically" << std::endl;
-      command = {Command::Skip};
-    } else if (command.cmd == Command::Print) {
-      // Print the execution graph
-      // gctx.print_execution_graph(output_file);
-      assert(false && "todo");
-      verbose << "Execution graph written to " << output_file << std::endl;
-      command = {Command::Skip};
-    } else if (command.cmd == Command::Skip) {
-      // Skip is a no-op
-    } else if (command.cmd == Command::Info) {
-      std::cout << "Commands:" << std::endl;
-      std::cout << "s [tid] - Step to next sync point in thread" << std::endl;
-      std::cout << "[tid] - Step to next sync point in thread" << std::endl;
-      std::cout << "f - Finish the program" << std::endl;
-      std::cout << "r - Restart the program" << std::endl;
-      std::cout << "l - List all threads" << std::endl;
-      std::cout << "g - Toggle printing the execution graph at sync points"
-                << std::endl;
-      std::cout << "p - Printing the execution graph at current sync point"
-                << std::endl;
-      std::cout << "q - Quit the interpreter" << std::endl;
-      std::cout << "? - Display this help message" << std::endl;
-      command = {Command::Skip};
-    } else if (command.cmd == Command::Quit) {
-      // Quit is a no-op
-    }
-  }
-
-  return 0;
+    return 0;
 }
+
 } // namespace gitmem

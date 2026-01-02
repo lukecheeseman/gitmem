@@ -42,7 +42,7 @@ static bool is_syncing(Thread &thread) {
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
-StepResult<size_t>
+std::variant<size_t, TerminationStatus>
 Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
   ThreadContext& ctx = thread.ctx;
 
@@ -111,7 +111,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
  * counter (0 if waiting for some other thread) or the exceptional
  * termination status of the thread.
  */
-StepResult<int> Interpreter::run_statement(Node stmt, Thread& thread) {
+std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Thread& thread) {
   ThreadContext& ctx = thread.ctx;
 
   auto s = stmt / lang::Stmt;
@@ -299,7 +299,7 @@ StepResult<int> Interpreter::run_statement(Node stmt, Thread& thread) {
  * it terminates. Report whether the thread was able to progress or not, or
  * whether it terminated.
  */
-StepResult<ProgressStatus>
+std::variant<ProgressStatus, TerminationStatus>
 Interpreter::run_single_thread_to_sync(Thread& thread) {
   if (thread.terminated)
     return *thread.terminated;
@@ -359,7 +359,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
  * Run a thread to the next sync point, including any threads spawned by that
  * thread
  */
-StepResult<ProgressStatus>
+std::variant<ProgressStatus, TerminationStatus>
 Interpreter::progress_thread(Thread& thread) {
   auto no_threads = gctx.threads.size();
   auto prog_or_term = run_single_thread_to_sync(thread);
@@ -386,7 +386,7 @@ Interpreter::progress_thread(Thread& thread) {
 
 /* Try to evaluate all threads until a sync point or termination point
  */
-StepResult<ProgressStatus>
+std::variant<ProgressStatus, TerminationStatus>
 Interpreter::run_threads_to_sync() {
   verbose << "-----------------------" << std::endl;
   bool all_completed = true;
@@ -430,7 +430,7 @@ static bool is_finished(const StepResult<ProgressStatus>& r) {
  * or we have reached a stuck configuration.
  */
 int Interpreter::run() {
-  StepResult<ProgressStatus> prog_or_term;
+  std::variant<ProgressStatus, TerminationStatus> prog_or_term;
   do {
     prog_or_term = run_threads_to_sync();
   } while (!is_finished(prog_or_term));
