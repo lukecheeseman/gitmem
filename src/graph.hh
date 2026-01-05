@@ -140,5 +140,18 @@ struct Pending : Node {
   Pending(const std::string statement) : statement(statement) {}
   void accept(Visitor *v) const override { v->visitPending(this); }
 };
+
+struct ExecutionGraph {
+  std::vector<std::shared_ptr<graph::Start>> threads;
+
+  ExecutionGraph() = default;
+
+  ExecutionGraph(const ExecutionGraph&) = delete;
+  ExecutionGraph& operator=(const ExecutionGraph&) = delete;
+
+  ExecutionGraph(ExecutionGraph&&) = default;
+  ExecutionGraph& operator=(ExecutionGraph&&) = default;
+};
+
 } // namespace graph
 } // namespace gitmem

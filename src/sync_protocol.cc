@@ -4,12 +4,6 @@
 
 namespace gitmem {
 
-template <typename T> std::ostream &Conflict<T>::print(std::ostream &os) const {
-  os << "conflict on " << var << " { " << versions.first << ", "
-     << versions.second << " }";
-  return os;
-}
-
 // --------------------
 // LinearSyncProtocol
 // --------------------

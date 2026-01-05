@@ -67,14 +67,8 @@ struct Thread {
 
 struct Lock {
   std::optional<ThreadID> owner = std::nullopt;
+  std::shared_ptr<Event> last_unlock_event = nullptr;
 };
-
-template <typename T, typename... Args>
-std::shared_ptr<T> thread_append_node(ThreadContext &ctx, Args &&...args);
-
-template <>
-std::shared_ptr<graph::Pending>
-thread_append_node<graph::Pending>(ThreadContext &ctx, std::string &&stmt);
 
 struct GlobalContext {
   // Execution state

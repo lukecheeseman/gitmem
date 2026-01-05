@@ -3,7 +3,6 @@
 #include <variant>
 
 #include "debug.hh"
-#include "graphviz.hh"
 #include "interpreter.hh"
 #include "sync_protocol.hh"
 
@@ -58,6 +57,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
   } else if (e == lang::Var) {
     auto var = std::string(expr->location().view());
     if (std::optional<size_t> result = gctx.protocol->read(ctx, var)) {
+      thread.trace.on_read(var, *result);
       return *result;
     } else { // It is invalid to read a previously unwritten value
       return TerminationStatus::unassigned_variable_read_exception;
@@ -74,7 +74,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     }
     return sum;
   } else if (e == lang::Spawn) {
-    ThreadID tid = gctx.threads.size();
+    ThreadID child_tid = gctx.threads.size();
     ThreadContext child_ctx(gctx.protocol->kind());
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
@@ -82,10 +82,9 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
       throw std::logic_error("This code path should never be reached");
     }
 
-    gctx.threads.emplace_back(tid, std::move(child_ctx), e / lang::Block);
-    // thread_append_node<graph::Spawn>(ctx, tid, node);
-
-    return tid;
+    gctx.threads.emplace_back(child_tid, std::move(child_ctx), e / lang::Block);
+    thread.trace.on_spawn(child_tid);
+    return child_tid;
   } else if (e == lang::Eq || e == lang::Neq) {
     auto lhs = e / lang::Lhs;
     auto rhs = e / lang::Rhs;
@@ -158,6 +157,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       } else if (lhs == lang::Var) {
 
         gctx.protocol->write(ctx, var, *val);
+        thread.trace.on_write(var, *val);
 
         // // Global variable writes need to create a new commit id
         // // to track the history of updates
@@ -167,8 +167,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
         // verbose <<  "Set global '" << lhs->location().view() << "' to " <<
         // *val <<  " with id " << *(global.commit) << std::endl;
 
-        // auto node = thread_append_node<graph::Write>(ctx, var, global.val,
-        // *global.commit); gctx.commit_map[*(global.commit)] = node;
+        // gctx.commit_map[*(global.commit)] = node;
       } else {
         throw std::runtime_error("Bad left-hand side: " +
                                  std::string(lhs->type().str()));
@@ -204,9 +203,10 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
         (*joinee.terminated == TerminationStatus::completed)) {
       if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx, gctx)) {
         verbose << (**conflict) << std::endl;
+        thread.trace.on_join(result, std::move(*conflict));
         return TerminationStatus::datarace_exception;
       } else {
-        // thread_append_node<graph::Join>(ctx, result, joinee->ctx.tail);
+        thread.trace.on_join(result);
       }
 
     } else {
@@ -228,21 +228,16 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     }
 
     lock.owner = thread.tid;
+
     if (auto conflict = gctx.protocol->on_lock(ctx, lock, gctx)) {
       verbose << (**conflict) << std::endl;
-      //     using graph::Node;
-      //     auto [s1, s2] = conflict->commits;
-      //     auto sources = std::pair<std::shared_ptr<Node>,
-      //     std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]};
-      //     auto graph_conflict = graph::Conflict(conflict->var, sources);
-      //     thread_append_node<graph::Lock>(ctx, var, lock.last,
-      //     graph_conflict);
+      thread.trace.on_lock(var, lock.last_unlock_event, std::move(*conflict));
       return TerminationStatus::datarace_exception;
     }
 
-    // thread_append_node<graph::Lock>(ctx, var, lock.last);
-
+    thread.trace.on_lock(var, lock.last_unlock_event);
     verbose << "Locked " << var << std::endl;
+
   } else if (s == lang::Unlock) {
     // We can only unlock locks we previously locked. We commit any
     // pending updates and then copy the threads versioned globals
@@ -260,14 +255,14 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     if (auto conflict = gctx.protocol->on_unlock(ctx, lock, gctx)) {
       verbose << (**conflict) << std::endl;
+      thread.trace.on_unlock(var, std::move(*conflict));
       return TerminationStatus::datarace_exception;
     }
 
     // lock.globals = ctx.globals;
     lock.owner.reset();
 
-    // thread_append_node<graph::Unlock>(ctx, var);
-    // lock.last = ctx.tail;
+    lock.last_unlock_event = thread.trace.on_unlock(var);
 
     verbose << "Unlocked " << var << std::endl;
 
@@ -280,8 +275,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
         verbose << "Assertion passed: " << expr->location().view() << std::endl;
       } else {
         verbose << "Assertion failed: " << expr->location().view() << std::endl;
-        // thread_append_node<graph::AssertionFailure>(
-        //     ctx, std::string(expr->location().view()));
+        thread.trace.on_assert_fail(std::string(expr->location().view()));
         return TerminationStatus::assertion_failure_exception;
       }
     } else {
@@ -309,8 +303,10 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
   Node block = thread.block;
 
   // Initial sync when thread starts executing
-  if (pc == 0)
+  if (pc == 0) {
     gctx.protocol->on_start(ctx, gctx);
+    thread.trace.on_start();
+  }
 
   bool made_progress = false;
 
@@ -351,7 +347,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
   }
 
   thread.terminated = TerminationStatus::completed;
-  // thread_append_node<graph::End>(ctx);
+  thread.trace.on_end();
   return TerminationStatus::completed;
 }
 
@@ -439,7 +435,7 @@ int Interpreter::run() {
 
   bool exception_detected = false;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
-    const auto &thread = gctx.threads[i];
+    auto &thread = gctx.threads[i];
     if (thread.terminated) {
       switch (thread.terminated.value()) {
       case TerminationStatus::completed:
@@ -475,7 +471,7 @@ int Interpreter::run() {
       }
     } else {
       exception_detected = true;
-      // thread_append_node<graph::End>(thread->ctx);
+      thread.trace.on_end();
       verbose << "Thread " << i << " is stuck" << std::endl;
     }
   }
@@ -483,10 +479,97 @@ int Interpreter::run() {
   return exception_detected ? 1 : 0;
 }
 
+void Interpreter::print_thread_traces() {
+  for (size_t tid = 0; tid < gctx.threads.size(); ++tid) {
+    const auto& thread = gctx.threads[tid];
+    std::cout << "=== Thread " << tid << " ===" << std::endl;
+    std::cout << thread.trace;
+    std::cout << "====================================\n";
+  }
+}
+
+graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
+  // Map each thread ID to its last graph node in the execution graph
+  std::unordered_map<ThreadID, std::shared_ptr<graph::Node>> thread_tails;
+
+  // create start nodes for all threads
+  graph::ExecutionGraph g;
+  for (ThreadID tid = 0; tid < gctx.threads.size(); ++tid) {
+    auto node = std::make_shared<graph::Start>(tid);
+    g.threads.push_back(node);
+    thread_tails[tid] = node;
+  }
+
+  assert(false && "This is currently not building the current graph");
+
+  // Helper lambda to convert an Event to a graph Node
+  auto event_to_node = [&](ThreadID tid, const std::shared_ptr<Event>& e) -> std::shared_ptr<graph::Node> {
+    return std::visit([&](auto&& arg) -> std::shared_ptr<graph::Node> {
+      using T = std::decay_t<decltype(arg)>;
+      std::shared_ptr<graph::Node> node;
+
+      if constexpr (std::is_same_v<T, StartEvent>) {
+        node = std::make_shared<graph::Start>(tid);
+      } else if constexpr (std::is_same_v<T, EndEvent>) {
+        node = std::make_shared<graph::End>();
+      } else if constexpr (std::is_same_v<T, WriteEvent>) {
+        node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
+      } else if constexpr (std::is_same_v<T, ReadEvent>) {
+        // We could track dependencies from previous writes if desired
+        node = std::make_shared<graph::Read>(arg.var, arg.value, tid, thread_tails[tid]);
+      } else if constexpr (std::is_same_v<T, SpawnEvent>) {
+        ThreadID child_tid = arg.child_tid;
+        node = std::make_shared<graph::Spawn>(child_tid, g.threads[child_tid]);
+      } else if constexpr (std::is_same_v<T, JoinEvent>) {
+        node = std::make_shared<graph::Join>(arg.joinee_tid, thread_tails[arg.joinee_tid]);
+      } else if constexpr (std::is_same_v<T, LockEvent>) {
+        node = std::make_shared<graph::Lock>(arg.lock_name, thread_tails[tid]);
+      } else if constexpr (std::is_same_v<T, UnlockEvent>) {
+        node = std::make_shared<graph::Unlock>(arg.lock_name);
+      } else if constexpr (std::is_same_v<T, AssertEvent>) {
+        node = std::make_shared<graph::AssertionFailure>(arg.condition);
+      } else {
+        throw std::logic_error("Unknown Event type in trace");
+      }
+
+      // Link the previous tail of this thread to this new node
+      if (thread_tails[tid])
+        thread_tails[tid]->next = node;
+
+      thread_tails[tid] = node;
+      return node;
+    }, e->data);
+  };
+
+  // Iterate over threads in thread ID order
+  for (ThreadID tid = 0; tid < gctx.threads.size(); ++tid) {
+    auto& thread = gctx.threads[tid];
+
+    // skip the first event because it is always start and we created that to begin with
+    for (auto it = std::next(thread.trace.begin()); it != thread.trace.end(); ++it) {
+        event_to_node(tid, *it);
+    }
+    if (!thread.terminated) {
+      trieste::Node stmt = thread.block->at(thread.pc);
+      thread_tails[tid]->next = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
+    }
+  }
+
+  return g;
+}
+
 int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
-  GlobalContext gctx(ast, make_protocol(sync_kind));
-  Interpreter interp(std::move(gctx));
-  return interp.run();
+  Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
+  int result = interp.run();
+
+  interp.print_thread_traces();
+
+  auto exec_graph = interp.build_execution_graph_from_traces();
+
+  // graph::GraphvizPrinter gv(output_path);
+  // gv.visit(node.get());
+
+  return result;
 }
 
 } // namespace gitmem

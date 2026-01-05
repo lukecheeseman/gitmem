@@ -33,7 +33,6 @@ public:
 
   GlobalContext& context() { return gctx; }
 
-  // Internal functions
   int run();
 
   StepResult<size_t> evaluate_expression(trieste::Node, Thread&);
@@ -42,6 +41,10 @@ public:
   StepResult<ProgressStatus> progress_thread(Thread&);
   StepResult<ProgressStatus> run_single_thread_to_sync(Thread&);
   StepResult<ProgressStatus> run_threads_to_sync();
+
+  void print_thread_traces();
+
+  graph::ExecutionGraph build_execution_graph_from_traces();
 
 };
 

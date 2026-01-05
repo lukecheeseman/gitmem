@@ -1,5 +1,6 @@
 #pragma once
 
+#include "conflict.hh"
 #include "sync_kind.hh"
 #include "execution_state.hh"
 #include "branching/version_store.hh"
@@ -12,25 +13,6 @@
 namespace gitmem {
 
 std::unique_ptr<SyncProtocol> make_protocol(SyncKind);
-
-struct ConflictBase {
-  virtual ~ConflictBase() = default;
-  virtual std::ostream &print(std::ostream &os) const = 0;
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const ConflictBase &conflict) {
-    return conflict.print(os);
-  }
-};
-
-template <typename VersionID> struct Conflict : ConflictBase {
-  std::string var;
-  std::pair<VersionID, VersionID> versions;
-
-  Conflict(std::string var, std::pair<VersionID, VersionID> versions)
-      : var(std::move(var)), versions(std::move(versions)) {}
-
-  std::ostream &print(std::ostream &os) const override;
-};
 
 using LinearConflict = Conflict<linear::Timestamp>;
 using BranchingConflict = Conflict<branching::Commit>;

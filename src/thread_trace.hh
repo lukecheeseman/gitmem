@@ -1,57 +1,179 @@
 #pragma once
 
 #include "thread_id.hh"
-#include "graph.hh"
+#include "conflict.hh"
 
 namespace gitmem {
 
-struct ThreadTrace {
+struct Event;
+
+struct StartEvent {};
+struct SpawnEvent { const ThreadID child_tid; };
+struct ReadEvent { const std::string var; const size_t value; };
+struct WriteEvent { const std::string var; const size_t value; };
+struct LockEvent { std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
+struct UnlockEvent { const std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; };
+struct JoinEvent { const ThreadID joinee_tid; std::unique_ptr<ConflictBase> maybe_conflict; };
+struct AssertEvent { const std::string condition; };
+
+struct EndEvent {};
+
+using EventID = size_t;
+
+struct Event {
   ThreadID tid;
-  std::shared_ptr<graph::Node> head;
-  std::shared_ptr<graph::Node> tail;
+  EventID eid;
+  std::variant<
+    StartEvent,
+    SpawnEvent,
+    ReadEvent,
+    WriteEvent,
+    LockEvent,
+    UnlockEvent,
+    JoinEvent,
+    AssertEvent,
+    EndEvent
+  > data;
+};
+
+inline std::string event_header(const Event& e) {
+  std::ostringstream oss;
+  oss << "[tid=" << e.tid << ", eid=" << e.eid << "]";
+  return oss.str();
+}
+
+// --- operator<< overloads for individual event types ---
+inline std::ostream& operator<<(std::ostream& os, const StartEvent&) {
+  return os << "StartEvent";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const SpawnEvent& e) {
+  return os << "SpawnEvent(child_tid=" << e.child_tid << ")";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const ReadEvent& e) {
+  return os << "ReadEvent(var=\"" << e.var << "\", value=" << e.value << ")";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const WriteEvent& e) {
+  return os << "WriteEvent(var=\"" << e.var << "\", value=" << e.value << ")";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const LockEvent& e) {
+  os << "LockEvent(lock_name=\"" << e.lock_name << "\"";
+  if (e.last_unlock_event)
+    os << ", last unlock " << event_header(*e.last_unlock_event);
+  if (e.maybe_conflict)
+    os << ", conflict)";
+  else
+    os << ")";
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const UnlockEvent& e) {
+  os << "UnlockEvent(lock_name=\"" << e.lock_name << "\"";
+  if (e.maybe_conflict)
+    os << ", conflict)";
+  else
+    os << ")";
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const JoinEvent& e) {
+  os << "JoinEvent(joinee_tid=" << e.joinee_tid;
+  if (e.maybe_conflict)
+    os << ", conflict)";
+  else
+    os << ")";
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const AssertEvent& e) {
+  return os << "AssertEvent(condition=\"" << e.condition << "\")";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const EndEvent&) {
+  return os << "EndEvent";
+}
+
+// --- operator<< for the wrapper Event ---
+inline std::ostream& operator<<(std::ostream& os, const Event& e) {
+  os << event_header(e) << " ";
+  std::visit([&os](auto&& arg) { os << arg; }, e.data);
+  return os;
+}
+
+static EventID next_eid = 0;
+
+struct ThreadTrace {
+  std::vector<std::shared_ptr<Event>> trace;
+  ThreadID tid;
+
+  auto begin() { return trace.begin(); }
+  auto end()   { return trace.end(); }
+
+  auto begin() const { return trace.begin(); }
+  auto end()   const { return trace.end(); }
+
+  explicit ThreadTrace(ThreadID tid) : tid(tid) {}
 
 private:
   template<class T, class... Args>
-  void append(Args&&... args) {
-    assert(tail);
-    auto node = std::make_shared<T>(std::forward<Args>(args)...);
-    tail->next = node;
-    tail = node;
+  std::shared_ptr<Event> append(Args&&... args) {
+    auto event = std::make_shared<Event>(tid, next_eid++, T(std::forward<Args>(args)...));
+    trace.push_back(event);
+    return event;
   }
 
-public:
-  explicit ThreadTrace(ThreadID tid): tid(tid), head(nullptr), tail(nullptr) {}
-
-  void on_start(ThreadID tid) {
-    assert(head == tail && head == nullptr);
-    head = std::make_shared<graph::Start>(tid);
-    tail = head;
+  public:
+  std::shared_ptr<Event> on_start() {
+    return append<StartEvent>();
   }
 
-  void on_stmt(std::string text) {
-    append<graph::Pending>(std::move(text));
+  std::shared_ptr<Event> on_spawn(ThreadID child_tid) {
+    return append<SpawnEvent>(child_tid);
   }
 
-  void on_lock(std::string lock, std::shared_ptr<graph::Node> last) {
-    append<graph::Lock>(std::move(lock), last);
+  std::shared_ptr<Event> on_read(const std::string text, const size_t value) {
+    return append<ReadEvent>(std::move(text), value);
   }
 
-  void on_unlock(std::string lock) {
-    append<graph::Unlock>(std::move(lock));
+  std::shared_ptr<Event> on_write(const std::string text, const size_t value) {
+    return append<WriteEvent>(std::move(text), value);
   }
 
-  void on_join(ThreadID tid, std::shared_ptr<graph::Node> target) {
-    append<graph::Join>(tid, target);
+  std::shared_ptr<Event> on_lock(const std::string lock_name,
+                                 std::shared_ptr<Event> last_unlock_event,
+                                 std::unique_ptr<ConflictBase> conflict = nullptr) {
+    return append<LockEvent>(std::move(lock_name), std::move(conflict), last_unlock_event);
   }
 
-  void on_assert_fail(std::string expr) {
-    append<graph::AssertionFailure>(std::move(expr));
+  std::shared_ptr<Event> on_unlock(const std::string lock_name, std::unique_ptr<ConflictBase> conflict = nullptr) {
+    return append<UnlockEvent>(std::move(lock_name), std::move(conflict));
   }
 
-  void on_end() {
-    append<graph::End>();
+  std::shared_ptr<Event> on_join(ThreadID tid, std::unique_ptr<ConflictBase> conflict = nullptr) {
+    return append<JoinEvent>(tid, std::move(conflict));
+  }
+
+  std::shared_ptr<Event> on_assert_fail(std::string expr) {
+    return append<AssertEvent>(std::move(expr));
+  }
+
+  std::shared_ptr<Event> on_end() {
+    return append<EndEvent>();
   }
 };
+
+
+// --- operator<< for ThreadTrace ---
+inline std::ostream& operator<<(std::ostream& os, const ThreadTrace& tt) {
+  os << "ThreadTrace[" << tt.trace.size() << " events]:\n";
+  for (size_t i = 0; i < tt.trace.size(); ++i) {
+    os << "  " << i << ": " << *(tt.trace[i]) << "\n";
+  }
+  return os;
+}
 
 } // namespace gitmem
 
