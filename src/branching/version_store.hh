@@ -5,6 +5,7 @@
 #include <optional>
 #include <unordered_map>
 #include <vector>
+#include "thread_id.hh"
 
 namespace gitmem {
 
@@ -15,23 +16,21 @@ namespace branching {
  * the current commit id for the variable, and the history of commited ids.
  */
 
-using Commit = size_t;
-using CommitHistory = std::vector<Commit>;
+using Timestamp = std::pair<ThreadID, size_t>;
+using Value = size_t;
+using ObjectNumber = uint64_t;
 
-struct Global {
-  size_t val;
-  std::optional<Commit> commit;
-  CommitHistory history;
-};
-
-using Globals = std::unordered_map<std::string, Global>;
-
-struct Conflict {
-  std::string var;
-  std::pair<Commit, Commit> commits;
+struct Commit {
+  size_t id;
+  std::vector<std::shared_ptr<Commit>> parents;
+  Timestamp timestamp;
+  std::unordered_map<ObjectNumber, Value> changes;
 };
 
 struct LocalVersionStore {
+  std::shared_ptr<Commit> _head;
+  std::unordered_map<ObjectNumber, Value> _staging;
+
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
     assert(false && "TODO");
     return os;
@@ -43,6 +42,21 @@ struct LocalVersionStore {
   }
 
 };
+
+// using CommitHistory = std::vector<Commit>;
+
+// struct Global {
+//   size_t val;
+//   std::optional<Commit> commit;
+//   CommitHistory history;
+// };
+
+// using Globals = std::unordered_map<std::string, Global>;
+
+// struct Conflict {
+//   std::string var;
+//   std::pair<Commit, Commit> commits;
+// };
 
 // Join logic
 // commit(ctx.globals);
