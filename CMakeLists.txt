@@ -25,9 +25,10 @@ add_executable(gitmem
   src/passes/statements.cc
   src/passes/check_refs.cc
   src/passes/branching.cc
-  src/linear/version_store.cc
   src/linear/sync_protocol.cc
+  src/linear/version_store.cc
   src/branching/sync_protocol.cc
+  src/branching/version_store.cc
   src/interpreter.cc
   src/debugger.cc
   src/model_checker.cc

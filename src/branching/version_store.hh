@@ -5,6 +5,7 @@
 #include <optional>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 #include "thread_id.hh"
 
 namespace gitmem {
@@ -16,31 +17,85 @@ namespace branching {
  * the current commit id for the variable, and the history of commited ids.
  */
 
-using Timestamp = std::pair<ThreadID, size_t>;
+struct Timestamp {
+  ThreadID thread;
+  size_t counter;
+
+  auto operator<=>(const Timestamp &) const = default;
+
+  // pre-increment
+  Timestamp& operator++() {
+    ++counter;
+    return *this;
+  }
+
+  // post-increment
+  Timestamp operator++(int) {
+    Timestamp old = *this;
+    ++(*this);
+    return old;
+  }
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const Timestamp &ts) {
+    os << ts.thread << ":" << ts.counter;
+    return os;
+  }
+};
+
 using Value = size_t;
 using ObjectNumber = uint64_t;
 
 struct Commit {
-  size_t id;
-  std::vector<std::shared_ptr<Commit>> parents;
-  Timestamp timestamp;
+  Timestamp id;
   std::unordered_map<ObjectNumber, Value> changes;
+  std::vector<std::shared_ptr<const Commit>> parents;
 };
 
-struct LocalVersionStore {
-  std::shared_ptr<Commit> _head;
-  std::unordered_map<ObjectNumber, Value> _staging;
+// Initial plumbing for fail late
+// enum class ReadKind {
+//   NotFound,
+//   Value,
+//   Conflict
+// };
 
-  friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
-    assert(false && "TODO");
-    return os;
-  }
+// struct ReadResult {
+//   ReadKind kind;
+//   std::optional<Value> value; // only valid if kind == Value
+// };
 
-  bool operator==(const LocalVersionStore& other) const {
-    assert(false && "TODO");
-    return false;
-  }
 
+class LocalVersionStore {
+  Timestamp base_timestamp;
+  std::shared_ptr<const Commit> head;
+  std::unordered_map<ObjectNumber, Value> staging;
+
+public:
+  LocalVersionStore(ThreadID tid): base_timestamp(tid, 0) {}
+
+  void stage(ObjectNumber obj, Value value);
+  void commit_staging();
+
+  std::optional<Value> get_staged(ObjectNumber obj) const;
+  std::optional<Value> get_committed(ObjectNumber number) const;
+
+  std::shared_ptr<const Commit> exported_head() const { return head; };
+  void adopt_history(std::shared_ptr<const Commit> new_head) { head = new_head; };
+
+  friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
+  bool operator==(const LocalVersionStore& other) const;
+};
+
+class GlobalVersionStore {
+  ObjectNumber _next_object{0};
+  std::unordered_map<std::string, ObjectNumber> _object_numbers;
+
+public:
+
+  ObjectNumber get_object_number(std::string);
+  std::string get_object_name(ObjectNumber);
+
+  friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
 };
 
 // using CommitHistory = std::vector<Commit>;

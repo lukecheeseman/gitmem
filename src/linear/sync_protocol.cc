@@ -16,7 +16,7 @@ std::ostream &LinearSyncProtocol::print(std::ostream &os) const {
 }
 
 std::optional<LinearConflict>
-LinearSyncProtocol::push(linear::LocalVersionStore &local) {
+LinearSyncProtocol::push(LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
                                                     local.staged_changes())) {
 
@@ -26,7 +26,7 @@ LinearSyncProtocol::push(linear::LocalVersionStore &local) {
         std::make_pair(conflict->local_base, conflict->global_head));
   }
 
-  linear::Timestamp new_base = _global_store.apply_changes(
+  Timestamp new_base = _global_store.apply_changes(
       local.base_timestamp(), local.staged_changes());
 
   local.clear_staging();
@@ -35,7 +35,7 @@ LinearSyncProtocol::push(linear::LocalVersionStore &local) {
 }
 
 std::optional<LinearConflict>
-LinearSyncProtocol::pull(linear::LocalVersionStore &local) {
+LinearSyncProtocol::pull(LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
                                                     local.staged_changes())) {
 
@@ -52,7 +52,7 @@ LinearSyncProtocol::~LinearSyncProtocol() = default;
 
 std::optional<size_t> LinearSyncProtocol::read(ThreadContext &ctx,
                                                const std::string &var) {
-  linear::ObjectNumber number = _global_store.get_object_number(var);
+  ObjectNumber number = _global_store.get_object_number(var);
 
   auto& store = std::get<ThreadContext::LinearData>(ctx.sync).store;
 

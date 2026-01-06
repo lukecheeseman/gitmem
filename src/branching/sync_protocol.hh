@@ -1,13 +1,14 @@
 #pragma once
 
 #include "../sync_protocol.hh"
+#include "version_store.hh"
 
 namespace gitmem {
 
 namespace branching {
 
 class BranchingSyncProtocol final : public SyncProtocol {
-  // branching::GlobalContext _global_context;
+  GlobalVersionStore _global_store;
 
   // std::unordered_map<Commit, std::shared_ptr<graph::Node>> commit_nodes;
 

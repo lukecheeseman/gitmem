@@ -36,7 +36,7 @@ struct ThreadContext {
   ThreadContext(ThreadContext&&) = default;
   ThreadContext& operator=(ThreadContext&&) = default;
 
-  ThreadContext(SyncKind sync_kind);
+  ThreadContext(ThreadID tid, SyncKind sync_kind);
 
   bool operator==(const ThreadContext &other) const;
 

@@ -13,10 +13,10 @@ using LinearConflict = Conflict<linear::Timestamp>;
 namespace linear {
 
 class LinearSyncProtocol final : public SyncProtocol {
-  linear::GlobalVersionStore _global_store;
+  GlobalVersionStore _global_store;
 
-  std::optional<LinearConflict> push(linear::LocalVersionStore &local);
-  std::optional<LinearConflict> pull(linear::LocalVersionStore &local);
+  std::optional<LinearConflict> push(LocalVersionStore &local);
+  std::optional<LinearConflict> pull(LocalVersionStore &local);
 
 public:
   ~LinearSyncProtocol() override;

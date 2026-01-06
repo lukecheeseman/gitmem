@@ -75,7 +75,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     return sum;
   } else if (e == lang::Spawn) {
     ThreadID child_tid = gctx.threads.size();
-    ThreadContext child_ctx(gctx.protocol->kind());
+    ThreadContext child_ctx(child_tid, gctx.protocol->kind());
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
@@ -564,7 +564,7 @@ int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind
 
   interp.print_thread_traces();
 
-  auto exec_graph = interp.build_execution_graph_from_traces();
+  // auto exec_graph = interp.build_execution_graph_from_traces();
 
   // graph::GraphvizPrinter gv(output_path);
   // gv.visit(node.get());

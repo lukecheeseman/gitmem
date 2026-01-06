@@ -5,13 +5,13 @@
 
 namespace gitmem {
 
-ThreadContext::ThreadContext(SyncKind sync_kind) {
+ThreadContext::ThreadContext(ThreadID tid, SyncKind sync_kind) {
   switch (sync_kind) {
     case SyncKind::Linear:
       sync.emplace<LinearData>();
       break;
     case SyncKind::Branching:
-      sync.emplace<BranchingData>();
+      sync.emplace<BranchingData>(tid);
       break;
   }
 }
@@ -65,9 +65,10 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
                              std::unique_ptr<SyncProtocol> protocol)
     : protocol(std::move(protocol)) {
   trieste::Node starting_block = ast / lang::File / lang::Block;
-  ThreadContext starting_ctx(this->protocol->kind());
 
   ThreadID main_tid = 0;
+
+  ThreadContext starting_ctx(main_tid, this->protocol->kind());
 
   this->threads.emplace_back(main_tid, std::move(starting_ctx), starting_block);
   this->locks = {};
