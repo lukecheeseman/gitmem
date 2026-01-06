@@ -10,8 +10,6 @@ namespace gitmem {
 
 std::unique_ptr<SyncProtocol> make_protocol(SyncKind);
 
-using BranchingConflict = Conflict<branching::Commit>;
-
 class SyncProtocol {
 public:
   virtual ~SyncProtocol() = default;

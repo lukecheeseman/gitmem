@@ -52,6 +52,15 @@ struct Commit {
   std::vector<std::shared_ptr<const Commit>> parents;
 };
 
+// operator<< for Commit
+std::ostream& operator<<(std::ostream& os, const Commit& commit);
+
+struct Conflict {
+  ObjectNumber obj;
+  Timestamp timestamp_a;
+  Timestamp timestamp_b;
+};
+
 // Initial plumbing for fail late
 // enum class ReadKind {
 //   NotFound,
@@ -70,20 +79,26 @@ class LocalVersionStore {
   std::shared_ptr<const Commit> head;
   std::unordered_map<ObjectNumber, Value> staging;
 
+  std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> last_writer; // cached
+
 public:
   LocalVersionStore(ThreadID tid): base_timestamp(tid, 0) {}
 
   void stage(ObjectNumber obj, Value value);
   void commit_staging();
 
+  bool has_commited() { return staging.empty(); }
+
   std::optional<Value> get_staged(ObjectNumber obj) const;
   std::optional<Value> get_committed(ObjectNumber number) const;
 
-  std::shared_ptr<const Commit> exported_head() const { return head; };
-  void adopt_history(std::shared_ptr<const Commit> new_head) { head = new_head; };
+  void adopt_history(const LocalVersionStore& other);
+  std::optional<Conflict> merge_with(const LocalVersionStore& other);
 
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
   bool operator==(const LocalVersionStore& other) const;
+
+  void dump() { if (head) std::cout << *head << "\n============\n" << std::endl; }
 };
 
 class GlobalVersionStore {

@@ -5,6 +5,8 @@
 
 namespace gitmem {
 
+using BranchingConflict = Conflict<branching::Timestamp>;
+
 namespace branching {
 
 class BranchingSyncProtocol final : public SyncProtocol {

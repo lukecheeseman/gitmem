@@ -13,7 +13,8 @@ struct ConflictBase {
   }
 };
 
-template <typename VersionID> struct Conflict : ConflictBase {
+template <typename VersionID>
+struct Conflict : ConflictBase {
   std::string var;
   std::pair<VersionID, VersionID> versions;
 
