@@ -23,17 +23,20 @@ std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
   return os;
 }
 
-std::optional<size_t> BranchingSyncProtocolBase::read(ThreadContext &ctx,
+ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
                                                   const std::string &var) {
   ObjectNumber number = _global_store.get_object_number(var);
 
   auto& store = get_store(ctx);
 
   if (auto result = store.get_staged(number))
-    return result;
+    return *result;
 
   // look in commit history
-  return store.get_committed(number);
+  if (auto result = store.get_committed(number))
+    return *result;
+
+  return std::monostate{};
 }
 
 void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var,

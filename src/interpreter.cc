@@ -38,6 +38,15 @@ static bool is_syncing(Thread &thread) {
     ((thread.pc >= thread.block->size()) || is_syncing(thread.block->at(thread.pc)));
 }
 
+// Helper to combine multiple lambdas for std::visit
+template<class... Ts>
+struct overloaded : Ts... {
+    using Ts::operator()...;
+};
+
+// deduction guide
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
@@ -56,12 +65,24 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     }
   } else if (e == lang::Var) {
     auto var = std::string(expr->location().view());
-    if (std::optional<size_t> result = gctx.protocol->read(ctx, var)) {
-      thread.trace.on_read(var, *result);
-      return *result;
-    } else { // It is invalid to read a previously unwritten value
-      return TerminationStatus::unassigned_variable_read_exception;
+
+    auto result = gctx.protocol->read(ctx, var);
+
+    return std::visit(overloaded{
+    [&](std::monostate) -> std::variant<size_t, TerminationStatus> {
+        // invalid: reading a variable that hasn't been written
+        return TerminationStatus::unassigned_variable_read_exception;
+    },
+    [&](Value value) -> std::variant<size_t, TerminationStatus> {
+        // normal read
+        thread.trace.on_read(var, value);
+        return value;
+    },
+    [&](std::unique_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
+        verbose << (*conflict) << std::endl;
+        return TerminationStatus::datarace_exception;
     }
+}, result);
   } else if (e == lang::Const) {
     return size_t(std::stoi(std::string(e->location().view())));
   } else if (e == lang::Add) {

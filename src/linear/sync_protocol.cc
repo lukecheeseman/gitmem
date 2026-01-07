@@ -54,25 +54,25 @@ LinearSyncProtocol::pull(LocalVersionStore &local) {
 
 LinearSyncProtocol::~LinearSyncProtocol() = default;
 
-std::optional<size_t> LinearSyncProtocol::read(ThreadContext &ctx,
+ReadResult LinearSyncProtocol::read(ThreadContext &ctx,
                                                const std::string &var) {
   ObjectNumber number = _global_store.get_object_number(var);
 
   auto& store = get_store(ctx);
 
   if (auto result = store.get_staged(number))
-    return result;
+    return *result;
 
   std::optional<size_t> value = _global_store.get_version_for_timestamp(
       number, store.base_timestamp());
-  if (!value)
-    return std::nullopt;
+  if (value)
+    return *value;
 
   // we do not need to record the staged value for correctness
   // TODO: there is something about working out if a value has changed vs been
   // written
 
-  return *value;
+  return std::monostate{};
 }
 
 void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,

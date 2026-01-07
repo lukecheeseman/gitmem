@@ -22,8 +22,7 @@ public:
   ~LinearSyncProtocol() override;
   SyncKind kind() const override { return SyncKind::Linear; };
 
-  std::optional<size_t> read(ThreadContext &ctx,
-                             const std::string &var) override;
+  ReadResult read(ThreadContext &ctx, const std::string &var) override;
 
   void write(ThreadContext &ctx, const std::string &var, size_t value) override;
 

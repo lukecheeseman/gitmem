@@ -8,6 +8,7 @@
 #include <iostream>
 #include "thread_id.hh"
 #include "sync_state.hh"
+#include "read_result.hh"
 
 namespace gitmem {
 
@@ -44,7 +45,6 @@ struct Timestamp {
   }
 };
 
-using Value = size_t;
 using ObjectNumber = uint64_t;
 
 struct Commit {
@@ -69,16 +69,6 @@ inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
 }
 
 // Initial plumbing for fail late
-// enum class ReadKind {
-//   NotFound,
-//   Value,
-//   Conflict
-// };
-
-// struct ReadResult {
-//   ReadKind kind;
-//   std::optional<Value> value; // only valid if kind == Value
-// };
 
 class LocalVersionStore : public ThreadSyncState {
   Timestamp base_timestamp;

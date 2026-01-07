@@ -4,6 +4,7 @@
 #include "sync_kind.hh"
 #include "sync_state.hh"
 #include "execution_state.hh"
+#include "read_result.hh"
 #include <memory>
 #include <optional>
 
@@ -19,8 +20,7 @@ public:
   virtual std::unique_ptr<LockSyncState> make_lock_state() const = 0;
 
   // Read a shared variable into the thread context
-  virtual std::optional<size_t> read(ThreadContext &ctx,
-                                     const std::string &var) = 0;
+  virtual ReadResult read(ThreadContext &ctx, const std::string &var) = 0;
 
   // Write a shared variable (staged, not committed)
   virtual void write(ThreadContext &ctx, const std::string &var,

@@ -9,7 +9,7 @@ struct Event;
 
 struct StartEvent {};
 struct SpawnEvent { const ThreadID child_tid; };
-struct ReadEvent { const std::string var; const size_t value; };
+struct ReadEvent { const std::string var; const size_t value; std::unique_ptr<ConflictBase> maybe_conflict; };
 struct WriteEvent { const std::string var; const size_t value; };
 struct LockEvent { std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
 struct UnlockEvent { const std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; };
@@ -52,7 +52,12 @@ inline std::ostream& operator<<(std::ostream& os, const SpawnEvent& e) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const ReadEvent& e) {
-  return os << "ReadEvent(var=\"" << e.var << "\", value=" << e.value << ")";
+  os << "ReadEvent(var=\"" << e.var << "\", value=" << e.value;
+  if (e.maybe_conflict)
+    os << ", conflict)";
+  else
+    os << ")";
+  return os;
 }
 
 inline std::ostream& operator<<(std::ostream& os, const WriteEvent& e) {
@@ -134,8 +139,8 @@ private:
     return append<SpawnEvent>(child_tid);
   }
 
-  std::shared_ptr<Event> on_read(const std::string text, const size_t value) {
-    return append<ReadEvent>(std::move(text), value);
+  std::shared_ptr<Event> on_read(const std::string text, const size_t value, std::unique_ptr<ConflictBase> conflict = nullptr) {
+    return append<ReadEvent>(std::move(text), value, std::move(conflict));
   }
 
   std::shared_ptr<Event> on_write(const std::string text, const size_t value) {
