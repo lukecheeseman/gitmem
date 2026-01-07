@@ -99,7 +99,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     ThreadContext child_ctx(child_tid, gctx.protocol);
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
-            gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
+            gctx.protocol->on_spawn(ctx, child_ctx)) {
       throw std::logic_error("This code path should never be reached");
     }
 
@@ -222,7 +222,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto &joinee = gctx.threads[result];
     if (joinee.terminated &&
         (*joinee.terminated == TerminationStatus::completed)) {
-      if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx, gctx)) {
+      if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx)) {
         verbose << (**conflict) << std::endl;
         thread.trace.on_join(result, std::move(*conflict));
         return TerminationStatus::datarace_exception;
@@ -250,7 +250,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     lock.owner = thread.tid;
 
-    if (auto conflict = gctx.protocol->on_lock(ctx, lock, gctx)) {
+    if (auto conflict = gctx.protocol->on_lock(ctx, lock)) {
       verbose << (**conflict) << std::endl;
       thread.trace.on_lock(var, lock.last_unlock_event, std::move(*conflict));
       return TerminationStatus::datarace_exception;
@@ -274,7 +274,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       return TerminationStatus::unlock_exception;
     }
 
-    if (auto conflict = gctx.protocol->on_unlock(ctx, lock, gctx)) {
+    if (auto conflict = gctx.protocol->on_unlock(ctx, lock)) {
       verbose << (**conflict) << std::endl;
       thread.trace.on_unlock(var, std::move(*conflict));
       return TerminationStatus::datarace_exception;
@@ -326,7 +326,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
 
   // Initial sync when thread starts executing
   if (pc == 0) {
-    gctx.protocol->on_start(ctx, gctx);
+    gctx.protocol->on_start(ctx);
     thread.trace.on_start();
   }
 
@@ -362,7 +362,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
     return ProgressStatus::progress;
 
   // Otherwise, we truly reached the end this iteration
-  if (auto conflict = gctx.protocol->on_end(ctx, gctx)) {
+  if (auto conflict = gctx.protocol->on_end(ctx)) {
     verbose << (**conflict) << std::endl;
     thread.terminated = TerminationStatus::datarace_exception;
     return TerminationStatus::datarace_exception;

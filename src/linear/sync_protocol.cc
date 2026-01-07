@@ -83,8 +83,7 @@ void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
-                             GlobalContext &gctx) {
+LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
   // TODO: i think we can drop the globalcontext but check after branching is
   // added
 
@@ -103,8 +102,7 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
-                            GlobalContext &gctx) {
+LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee) {
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
@@ -116,7 +114,7 @@ LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
+LinearSyncProtocol::on_start(ThreadContext &thread) {
   // pull state from global history
   auto& store = get_store(thread);
   auto conflict = pull(store);
@@ -126,7 +124,7 @@ LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
 };
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
+LinearSyncProtocol::on_end(ThreadContext &thread) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))
@@ -136,8 +134,7 @@ LinearSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
 };
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock,
-                            GlobalContext &gctx) {
+LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock) {
 
   auto& store = get_store(thread);
   if (auto conflict = pull(store))
@@ -147,9 +144,7 @@ LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &,
-                              GlobalContext &gctx) {
-
+LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))

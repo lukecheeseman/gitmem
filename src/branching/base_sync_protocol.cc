@@ -24,7 +24,7 @@ std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
 }
 
 ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
-                                                  const std::string &var) {
+                                           const std::string &var) {
   ObjectNumber number = _global_store.get_object_number(var);
 
   auto& store = get_store(ctx);
@@ -46,8 +46,7 @@ void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_spawn(ThreadContext &parent, ThreadContext &child,
-                                GlobalContext &) {
+BranchingSyncProtocolBase::on_spawn(ThreadContext &parent, ThreadContext &child) {
   auto& parent_store = get_store(parent);
   parent_store.commit_staging();
 
@@ -59,8 +58,7 @@ BranchingSyncProtocolBase::on_spawn(ThreadContext &parent, ThreadContext &child,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee,
-                               GlobalContext &) {
+BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee) {
   auto& joiner_store = get_store(joiner);
   auto& joinee_store = get_store(joinee);
 
@@ -78,13 +76,13 @@ BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_start(ThreadContext &thread, GlobalContext &gctx) {
+BranchingSyncProtocolBase::on_start(ThreadContext &thread) {
   // nothing to do, the thread will have inhereted the parent commit on spawn
   return std::nullopt;
 };
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_end(ThreadContext &thread, GlobalContext &gctx) {
+BranchingSyncProtocolBase::on_end(ThreadContext &thread) {
   auto& store = get_store(thread);
   store.commit_staging();
 
@@ -92,8 +90,7 @@ BranchingSyncProtocolBase::on_end(ThreadContext &thread, GlobalContext &gctx) {
 };
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock,
-                               GlobalContext &) {
+BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock) {
   auto& store = get_store(thread);
   store.commit_staging();
 
@@ -115,8 +112,7 @@ BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock,
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock,
-                                 GlobalContext &) {
+BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
   auto& store = get_store(thread);
   store.commit_staging();
 

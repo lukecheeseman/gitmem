@@ -27,24 +27,22 @@ public:
   void write(ThreadContext &ctx, const std::string &var, size_t value) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_spawn(ThreadContext &parent, ThreadContext &child,
-           GlobalContext &gctx) override;
+  on_spawn(ThreadContext &parent, ThreadContext &child) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_join(ThreadContext &joiner, ThreadContext &joinee,
-          GlobalContext &gctx) override;
+  on_join(ThreadContext &joiner, ThreadContext &joinee) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_start(ThreadContext &thread, GlobalContext &gctx) override;
+  on_start(ThreadContext &thread) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_end(ThreadContext &thread, GlobalContext &gctx) override;
+  on_end(ThreadContext &thread) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_lock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) override;
+  on_lock(ThreadContext &thread, Lock &lock) override;
 
   std::optional<std::unique_ptr<ConflictBase>>
-  on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) override;
+  on_unlock(ThreadContext &thread, Lock &lock) override;
 
   std::ostream &print(std::ostream &os) const override;
 

@@ -27,24 +27,22 @@ public:
                      size_t value) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_spawn(ThreadContext &parent, ThreadContext &child,
-           GlobalContext &gctx) = 0;
+  on_spawn(ThreadContext &parent, ThreadContext &child) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_join(ThreadContext &joiner, ThreadContext &joinee,
-          GlobalContext &gctx) = 0;
+  on_join(ThreadContext &joiner, ThreadContext &joinee) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_start(ThreadContext &thread, GlobalContext &gctx) = 0;
+  on_start(ThreadContext &thread) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_end(ThreadContext &thread, GlobalContext &gctx) = 0;
+  on_end(ThreadContext &thread) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_lock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) = 0;
+  on_lock(ThreadContext &thread, Lock &lock) = 0;
 
   virtual std::optional<std::unique_ptr<ConflictBase>>
-  on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) = 0;
+  on_unlock(ThreadContext &thread, Lock &lock) = 0;
 
 
   virtual std::ostream &print(std::ostream &os) const = 0;
