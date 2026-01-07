@@ -56,7 +56,7 @@ BranchingSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
   joiner_store.commit_staging();
   assert(joinee_store.has_commited() && "joinee has staged changes");
 
-  std::optional<Conflict> conflict = joiner_store.merge_with(joinee_store);
+  std::optional<Conflict> conflict = joiner_store.merge_with_commit(joinee_store.get_head());
   if (conflict) {
     return std::make_unique<BranchingConflict>(
       _global_store.get_object_name(conflict->obj),
@@ -83,18 +83,41 @@ BranchingSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
 std::optional<std::unique_ptr<ConflictBase>>
 BranchingSyncProtocol::on_lock(ThreadContext &thread, Lock &lock,
                                GlobalContext &) {
-  assert(false && "Todo on_lock");
-  // commit(thread.globals);
-  // return pull(thread.globals, lock.globals);
+  auto& thread_store = std::get<ThreadContext::BranchingData>(thread.sync).store;
+  thread_store.commit_staging();
+
+  std::shared_ptr<const Commit> lock_commit = lock.branching.commit;
+
+  if (lock_commit != nullptr) {
+    std::optional<Conflict> conflict = thread_store.merge_with_commit(lock_commit);
+    if (conflict) {
+      return std::make_unique<BranchingConflict>(
+        _global_store.get_object_name(conflict->obj),
+        std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
+    }
+  }
+
+  lock.branching.commit = thread_store.get_head();
+
   return std::nullopt;
 }
 
 std::optional<std::unique_ptr<ConflictBase>>
 BranchingSyncProtocol::on_unlock(ThreadContext &thread, Lock &lock,
                                  GlobalContext &) {
-  assert(false && "Todo on_unlock");
-  // commit(thread.globals);
-  // lock.globals = thread.globals;
+  auto& thread_store = std::get<ThreadContext::BranchingData>(thread.sync).store;
+  thread_store.commit_staging();
+
+  std::shared_ptr<const Commit> lock_commit = lock.branching.commit;
+
+  // we don't need to check for conflicts
+  if (lock_commit != nullptr) {
+    std::optional<Conflict> conflict = thread_store.merge_with_commit(lock_commit);
+    assert (!conflict);
+  }
+
+  lock.branching.commit = thread_store.get_head();
+
   return std::nullopt;
 }
 

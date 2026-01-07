@@ -95,16 +95,16 @@ public:
 
   bool has_commited() { return staging.empty(); }
 
+  std::shared_ptr<const Commit> get_head() const { return head; }
+
   std::optional<Value> get_staged(ObjectNumber obj) const;
   std::optional<Value> get_committed(ObjectNumber number) const;
 
   void adopt_history(const LocalVersionStore& other);
-  std::optional<Conflict> merge_with(const LocalVersionStore& other);
+  std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head);
 
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
   bool operator==(const LocalVersionStore& other) const;
-
-  void dump() { if (head) std::cout << *head << "\n============\n" << std::endl; }
 };
 
 class GlobalVersionStore {

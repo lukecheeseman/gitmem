@@ -272,26 +272,26 @@ bool traverse_until_lca(
   return true;
 }
 
-std::optional<Conflict> LocalVersionStore::merge_with(const LocalVersionStore& other) {
+std::optional<Conflict> LocalVersionStore::merge_with_commit(const std::shared_ptr<const Commit>& commit) {
   assert(staging.empty());
-  assert(other.staging.empty());
+  assert(commit != nullptr);
 
   // trivial case: same history
-  if (head == other.head)
+  if (head == commit)
     return std::nullopt;
 
   // Create merge commit (no changes itself)
   auto merge_commit = std::make_shared<const Commit>(
     Commit{
       .id = base_timestamp++,
-      .parents = {head, other.head},
+      .parents = {head, commit},
       .changes = {}  // merge commit does not write anything
     }
   );
 
   // Find lowest common ancestor of the two heads
-  std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, other.head);
-  verbose << "found lca of " << head->id << " and " << other.head->id << " to be " << lca->id << std::endl;
+  std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, commit);
+  verbose << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
 
   // Collect all writes after LCA for each branch
   std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> branch_a, branch_b;
@@ -300,7 +300,7 @@ std::optional<Conflict> LocalVersionStore::merge_with(const LocalVersionStore& o
   std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
   traverse_until_lca(head, lca, branch_a, visited, reach_memo);
   visited.clear();
-  traverse_until_lca(other.head, lca, branch_b, visited, reach_memo);
+  traverse_until_lca(commit, lca, branch_b, visited, reach_memo);
 
   // 1. Eager conflict detection
   for (const auto& [obj, commit_a] : branch_a) {

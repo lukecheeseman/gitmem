@@ -68,6 +68,13 @@ struct Thread {
 struct Lock {
   std::optional<ThreadID> owner = std::nullopt;
   std::shared_ptr<Event> last_unlock_event = nullptr;
+
+  // Branching-specific data
+  struct BranchingData {
+    std::shared_ptr<const branching::Commit> commit;
+  };
+
+  BranchingData branching;
 };
 
 struct GlobalContext {
