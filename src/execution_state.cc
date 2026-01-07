@@ -5,15 +5,8 @@
 
 namespace gitmem {
 
-ThreadContext::ThreadContext(ThreadID tid, SyncKind sync_kind) {
-  switch (sync_kind) {
-    case SyncKind::Linear:
-      sync.emplace<LinearData>();
-      break;
-    case SyncKind::Branching:
-      sync.emplace<BranchingData>(tid);
-      break;
-  }
+ThreadContext::ThreadContext(ThreadID tid, std::unique_ptr<SyncProtocol>& protocol) {
+  sync = protocol->make_thread_state(tid);
 }
 
 bool ThreadContext::operator==(const ThreadContext &other) const {
@@ -22,37 +15,8 @@ bool ThreadContext::operator==(const ThreadContext &other) const {
 
   // ignore the graph node, we're not interested in that
 
-  if (sync.index() != other.sync.index())
-    return false;
-
-  return std::visit([&](const auto& a, const auto& b) -> bool {
-    using A = std::decay_t<decltype(a)>;
-    using B = std::decay_t<decltype(b)>;
-
-    if constexpr (std::is_same_v<A, std::monostate> &&
-                  std::is_same_v<B, std::monostate>) {
-      return true;
-    } else if constexpr (std::is_same_v<A, B>) {
-      return a.store == b.store;
-    } else {
-      return false; // unreachable due to index check
-    }
-  }, sync, other.sync);
+  return *sync == *other.sync;
 }
-
-// An old comment on equals
-// Globals have a history that we don't care about, so we only
-// compare values
-// if (ctx.globals.size() != other.ctx.globals.size())
-//     return false;
-// for (const auto &[var, global] : ctx.globals)
-// {
-//     if (!other.ctx.globals.contains(var) ||
-//         ctx.globals.at(var).val != other.ctx.globals.at(var).val)
-//     {
-//         return false;
-//     }
-// }
 
 bool Thread::operator==(const Thread &other) const {
   return ctx == other.ctx &&
@@ -68,14 +32,29 @@ GlobalContext::GlobalContext(const trieste::Node &ast,
 
   ThreadID main_tid = 0;
 
-  ThreadContext starting_ctx(main_tid, this->protocol->kind());
+  ThreadContext starting_ctx(main_tid, this->protocol);
 
   this->threads.emplace_back(main_tid, std::move(starting_ctx), starting_block);
-  this->locks = {};
-  this->cache = {};
 }
 
 GlobalContext::~GlobalContext() = default;
+
+Lock& GlobalContext::get_lock(std::string lock) {
+  auto it = locks.find(lock);
+  if (it != locks.end())
+    return it->second;
+
+  auto [new_it, inserted] = locks.emplace(
+    lock,
+    Lock{
+        .owner = std::nullopt,
+        .last_unlock_event = nullptr,
+        .sync = protocol->make_lock_state()
+    }
+  );
+
+  return new_it->second;
+}
 
 // void GlobalContext::print_execution_graph(
 //     const std::filesystem::path &output_path) const {
@@ -164,15 +143,7 @@ std::ostream& operator<<(std::ostream& os, const ThreadContext& ctx) {
 
   os << "}"; //, tail=" << ctx.tail;
 
-  std::visit([&](const auto& data) {
-    using T = std::decay_t<decltype(data)>;
-
-    if constexpr (std::is_same_v<T, ThreadContext::LinearData>) {
-      os << ", sync=linear{" << data.store << "}";
-    } else if constexpr (std::is_same_v<T, ThreadContext::BranchingData>) {
-      os << ", sync=branching{" << data.store << "}";
-    }
-  }, ctx.sync);
+  os << *(ctx.sync);
 
   os << "}";
   return os;

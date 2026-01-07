@@ -17,18 +17,12 @@
 namespace gitmem {
 
 class SyncProtocol;
+class ThreadSyncState;
 
 struct ThreadContext {
   std::unordered_map<std::string, size_t> locals;
 
-  struct LinearData {
-    linear::LocalVersionStore store;
-  };
-  struct BranchingData {
-    branching::LocalVersionStore store;
-  };
-
-  std::variant<LinearData, BranchingData> sync;
+  std::unique_ptr<ThreadSyncState> sync;
 
   ThreadContext(const ThreadContext&) = delete;
   ThreadContext& operator=(const ThreadContext&) = delete;
@@ -36,7 +30,7 @@ struct ThreadContext {
   ThreadContext(ThreadContext&&) = default;
   ThreadContext& operator=(ThreadContext&&) = default;
 
-  ThreadContext(ThreadID tid, SyncKind sync_kind);
+  ThreadContext(ThreadID tid, std::unique_ptr<SyncProtocol>&);
 
   bool operator==(const ThreadContext &other) const;
 
@@ -51,7 +45,7 @@ struct Thread {
   size_t pc = 0;
   std::optional<TerminationStatus> terminated = std::nullopt;
 
-  Thread(ThreadID tid, ThreadContext&& ctx, trieste::Node block):
+  Thread(ThreadID tid, ThreadContext ctx, trieste::Node block):
     tid(tid), ctx(std::move(ctx)), trace(tid), block(block) {};
 
   Thread(const Thread&) = delete;
@@ -68,19 +62,16 @@ struct Thread {
 struct Lock {
   std::optional<ThreadID> owner = std::nullopt;
   std::shared_ptr<Event> last_unlock_event = nullptr;
-
-  // Branching-specific data
-  struct BranchingData {
-    std::shared_ptr<const branching::Commit> commit;
-  };
-
-  BranchingData branching;
+  std::unique_ptr<LockSyncState> sync;
 };
 
 struct GlobalContext {
   // Execution state
   std::deque<Thread> threads;
+private:
   std::unordered_map<std::string, Lock> locks;
+public:
+  Lock& get_lock(std::string);
 
   // AST evaluation cache
   lang::NodeMap<size_t> cache;

@@ -6,6 +6,10 @@ namespace gitmem {
 
 namespace linear {
 
+LocalVersionStore& get_store(ThreadContext& ctx) {
+  return static_cast<LocalVersionStore&>(*ctx.sync);
+}
+
 // --------------------
 // LinearSyncProtocol
 // --------------------
@@ -54,7 +58,7 @@ std::optional<size_t> LinearSyncProtocol::read(ThreadContext &ctx,
                                                const std::string &var) {
   ObjectNumber number = _global_store.get_object_number(var);
 
-  auto& store = std::get<ThreadContext::LinearData>(ctx.sync).store;
+  auto& store = get_store(ctx);
 
   if (auto result = store.get_staged(number))
     return result;
@@ -74,7 +78,7 @@ std::optional<size_t> LinearSyncProtocol::read(ThreadContext &ctx,
 void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
                                size_t value) {
   // write into the staging area of the thread
-  auto& store = std::get<ThreadContext::LinearData>(ctx.sync).store;
+  auto& store = get_store(ctx);
   store.stage(_global_store.get_object_number(var), value);
 }
 
@@ -85,12 +89,12 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child,
   // added
 
   // push parent to global history
-  auto& store = std::get<ThreadContext::LinearData>(parent.sync).store;
+  auto& store = get_store(parent);
   if (auto conflict = push(store))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 
   // pull into the child
-  store = std::get<ThreadContext::LinearData>(child.sync).store;
+  store = get_store(child);
   if (auto conflict = pull(store)) {
     throw std::logic_error("This code path should never be reached");
   }
@@ -104,7 +108,7 @@ LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
-  auto& store = std::get<ThreadContext::LinearData>(joiner.sync).store;
+  auto& store = get_store(joiner);
   if (auto conflict = pull(store))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 
@@ -114,7 +118,7 @@ LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee,
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
   // pull state from global history
-  auto& store = std::get<ThreadContext::LinearData>(thread.sync).store;
+  auto& store = get_store(thread);
   auto conflict = pull(store);
   assert(!conflict && "cannot conflict from starting state");
 
@@ -124,7 +128,7 @@ LinearSyncProtocol::on_start(ThreadContext &thread, GlobalContext &gctx) {
 std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_end(ThreadContext &thread, GlobalContext &gctx) {
   // push changes to global history
-  auto& store = std::get<ThreadContext::LinearData>(thread.sync).store;
+  auto& store = get_store(thread);
   if (auto conflict = push(store))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 
@@ -135,7 +139,7 @@ std::optional<std::unique_ptr<ConflictBase>>
 LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock,
                             GlobalContext &gctx) {
 
-  auto& store = std::get<ThreadContext::LinearData>(thread.sync).store;
+  auto& store = get_store(thread);
   if (auto conflict = pull(store))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 
@@ -147,7 +151,7 @@ LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &,
                               GlobalContext &gctx) {
 
   // push changes to global history
-  auto& store = std::get<ThreadContext::LinearData>(thread.sync).store;
+  auto& store = get_store(thread);
   if (auto conflict = push(store))
     return std::make_unique<LinearConflict>(std::move(*conflict));
 

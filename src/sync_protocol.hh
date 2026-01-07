@@ -2,6 +2,7 @@
 
 #include "conflict.hh"
 #include "sync_kind.hh"
+#include "sync_state.hh"
 #include "execution_state.hh"
 #include <memory>
 #include <optional>
@@ -14,6 +15,8 @@ class SyncProtocol {
 public:
   virtual ~SyncProtocol() = default;
   virtual SyncKind kind() const = 0;
+  virtual std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const = 0;
+  virtual std::unique_ptr<LockSyncState> make_lock_state() const = 0;
 
   // Read a shared variable into the thread context
   virtual std::optional<size_t> read(ThreadContext &ctx,

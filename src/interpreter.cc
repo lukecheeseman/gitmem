@@ -75,7 +75,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     return sum;
   } else if (e == lang::Spawn) {
     ThreadID child_tid = gctx.threads.size();
-    ThreadContext child_ctx(child_tid, gctx.protocol->kind());
+    ThreadContext child_ctx(child_tid, gctx.protocol);
 
     if (std::optional<std::unique_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx, gctx)) {
@@ -220,7 +220,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto v = s / lang::Var;
     auto var = std::string(v->location().view());
 
-    Lock &lock = gctx.locks[var];
+    Lock& lock = gctx.get_lock(var);
     if (lock.owner) {
       verbose << "Waiting for lock " << var << " owned by "
               << lock.owner.value() << std::endl;
@@ -248,7 +248,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto v = s / lang::Var;
     auto var = std::string(v->location().view());
 
-    auto &lock = gctx.locks[var];
+    Lock& lock = gctx.get_lock(var);
     if (!lock.owner || (lock.owner && *lock.owner != thread.tid)) {
       return TerminationStatus::unlock_exception;
     }

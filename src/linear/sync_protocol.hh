@@ -48,6 +48,14 @@ public:
   on_unlock(ThreadContext &thread, Lock &lock, GlobalContext &gctx) override;
 
   std::ostream &print(std::ostream &os) const override;
+
+  std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
+    return std::make_unique<LocalVersionStore>();
+  }
+
+  std::unique_ptr<LockSyncState> make_lock_state() const override {
+    return nullptr;
+  }
 };
 
 } // namespace linear

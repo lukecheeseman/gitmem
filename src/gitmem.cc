@@ -5,7 +5,7 @@
 #include "model_checker.hh"
 #include "debugger.hh"
 #include "lang.hh"
-#include "sync_protocol.hh"
+#include "sync_kind.hh"
 
 int main(int argc, char **argv) {
   using namespace trieste;
@@ -32,9 +32,17 @@ int main(int argc, char **argv) {
   app.add_flag("-e,--explore", model_check,
                "Explore all possible execution paths.");
 
-  bool branching = false;
-  app.add_flag("-b,--branching", branching,
-               "Using branching semantics.");
+  auto string_to_sync = CLI::Transformer(std::map<std::string, gitmem::SyncKind> {
+      {"linear", gitmem::SyncKind::Linear},
+      {"branching-eager", gitmem::SyncKind::BranchingEager},
+      {"branching-lazy", gitmem::SyncKind::BranchingLazy}
+  });
+  string_to_sync.description("linear,branching-eager,branching-lazy");
+
+  gitmem::SyncKind sync_kind = gitmem::SyncKind::Linear;
+  app.add_option("--sync", sync_kind, "Select a sync protocol for execution (default: linear)")
+    ->transform(string_to_sync)
+    ->type_name("SYNC_KIND");
 
   try {
     app.parse(argc, argv);
@@ -67,7 +75,6 @@ int main(int argc, char **argv) {
     gitmem::verbose << "Output will be written to " << output_path << std::endl;
 
     int exit_status;
-    gitmem::SyncKind sync_kind = branching ? gitmem::SyncKind::Branching : gitmem::SyncKind::Linear;
     wf::push_back(gitmem::lang::wf);
     if (model_check) {
       exit_status = gitmem::model_check(result.ast, output_path, sync_kind);

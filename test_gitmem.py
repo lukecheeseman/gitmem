@@ -6,6 +6,12 @@ from collections import defaultdict
 
 EXAMPLES_DIR = "examples"
 
+SYNC_KINDS = {
+  "linear": "linear",
+  "branching-eager": "branching-eager",
+  "branching-lazy": "branching-lazy",
+}
+
 def supports_color():
   return sys.stdout.isatty() and os.getenv("NO_COLOR") is None
 
@@ -20,11 +26,14 @@ def green(text):
 def red(text):
   return color(text, "31")
 
-def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
-  cmd = [gitmem_path, file_path, "-e", "-o", "/dev/null"]
-
-  if is_branching:
-    cmd.insert(2, "-b")
+def run_gitmem_test(gitmem_path, file_path, should_accept, sync_kind):
+  cmd = [
+    gitmem_path,
+    file_path,
+    "--sync", sync_kind,
+    "-e",
+    "-o", "/dev/null"
+  ]
 
   try:
     result = subprocess.run(
@@ -41,7 +50,7 @@ def run_gitmem_test(gitmem_path, file_path, should_accept, is_branching):
     sys.exit(1)
 
   status = green("PASS") if accepted else red("FAIL")
-  print(f"[{status}] {file_path} (exit code: {result.returncode})")
+  print(f"[{status}] {file_path} [{sync_kind}] (exit code: {result.returncode})")
   return accepted
 
 def main():
@@ -54,21 +63,34 @@ def main():
   parser.add_argument(
     "--linear",
     action="store_true",
-    help="Only run linear tests"
+    help="Only run linear sync tests"
   )
   parser.add_argument(
-    "--branching",
+    "--branching-eager",
     action="store_true",
-    help="Only run branching tests"
+    help="Only run branching-eager tests"
   )
+  parser.add_argument(
+    "--branching-lazy",
+    action="store_true",
+    help="Only run branching-lazy tests"
+  )
+
   args = parser.parse_args()
   gitmem_path = args.gitmem
-  run_linear = args.linear
-  run_branching = args.branching
 
-  # If neither flag is specified, run both
-  if not run_linear and not run_branching:
-    run_linear = run_branching = True
+  selected_syncs = []
+
+  if args.linear:
+    selected_syncs.append("linear")
+  if args.branching_eager:
+    selected_syncs.append("branching-eager")
+  if args.branching_lazy:
+    selected_syncs.append("branching-lazy")
+
+  # If none specified, run all
+  if not selected_syncs:
+    selected_syncs = list(SYNC_KINDS.values())
 
   results = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {
     "total": 0,
@@ -87,54 +109,50 @@ def main():
       if not os.path.isdir(base_dir):
         continue
 
-      if category == "semantics":
-        subcategories = []
-        if run_branching:
-          subcategories.append("branching")
-        if run_linear:
-          subcategories.append("linear")
-      else:
-        subcategories = [None]
+      for sync_kind in selected_syncs:
+        # syntax tests are sync-agnostic → only run once
+        if category == "syntax" and sync_kind != "linear":
+          continue
 
-      for subcategory in subcategories:
-        if subcategory:
-          test_dir = os.path.join(base_dir, subcategory)
-          if not os.path.isdir(test_dir):
-            continue
-          is_branching = (subcategory == "branching")
+        if category == "semantics":
+          if sync_kind == "linear":
+            test_dir = os.path.join(base_dir, "linear")
+          else:
+            test_dir = os.path.join(base_dir, "branching")
         else:
           test_dir = base_dir
-          is_branching = False
+
+        if not os.path.isdir(test_dir):
+          continue
 
         for root, _, files in os.walk(test_dir):
           for file in files:
             file_path = os.path.join(root, file)
 
             total_tests += 1
-            results[expectation][category][subcategory]["total"] += 1
+            results[expectation][category][sync_kind]["total"] += 1
 
             passed = run_gitmem_test(
               gitmem_path,
               file_path,
               should_accept,
-              is_branching
+              sync_kind
             )
 
             if not passed:
               failed_tests += 1
-              results[expectation][category][subcategory]["failed"] += 1
-              failing_tests.append(file_path)
+              results[expectation][category][sync_kind]["failed"] += 1
+              failing_tests.append((file_path, sync_kind))
 
   print("\nDetailed Summary:")
   for expectation, categories in results.items():
     print(f"\n{expectation.upper()}:")
-    for category, subcats in categories.items():
+    for category, syncs in categories.items():
       print(f"  {category}:")
-      for subcategory, stats in subcats.items():
-        label = subcategory if subcategory else "all"
+      for sync_kind, stats in syncs.items():
         passed = stats["total"] - stats["failed"]
         print(
-          f"    {label}: "
+          f"    {sync_kind}: "
           f"{passed}/{stats['total']} passed "
           f"({stats['failed']} failed)"
         )
@@ -146,8 +164,8 @@ def main():
 
   if failing_tests:
     print("\nFailing tests:")
-    for path in failing_tests:
-      print(f"  {red(path)}")
+    for path, sync in failing_tests:
+      print(f"  {red(path)} [{sync}]")
 
   if failed_tests > 0:
     sys.exit(1)

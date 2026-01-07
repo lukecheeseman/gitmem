@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include <iostream>
+#include "sync_state.hh"
 
 namespace gitmem {
 
@@ -81,11 +82,13 @@ struct Conflict {
 // LocalVersionStore
 // -----------------------------
 
-class LocalVersionStore {
+class LocalVersionStore : public ThreadSyncState {
   Timestamp _base_timestamp{};
   std::unordered_map<ObjectNumber, Value> _staging;
 
 public:
+  ~LocalVersionStore() = default;
+
   Timestamp base_timestamp() const { return _base_timestamp; }
   const auto &staged_changes() const { return _staging; }
 
@@ -96,7 +99,18 @@ public:
 
   bool operator==(const LocalVersionStore& other) const;
 
+  bool operator==(const ThreadSyncState& other) const override {
+    auto* o = dynamic_cast<const LocalVersionStore*>(&other);
+    if (!o)
+      return false;
+    return *this == *o;
+  }
+
   friend std::ostream& operator<<(std::ostream&, const LocalVersionStore&);
+  std::ostream &print(std::ostream &os) const override {
+    os << dynamic_cast<const LocalVersionStore*>(this);
+    return os;
+  }
 };
 
 // -----------------------------

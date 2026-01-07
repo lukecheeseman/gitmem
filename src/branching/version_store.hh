@@ -7,6 +7,7 @@
 #include <vector>
 #include <iostream>
 #include "thread_id.hh"
+#include "sync_state.hh"
 
 namespace gitmem {
 
@@ -79,8 +80,7 @@ inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
 //   std::optional<Value> value; // only valid if kind == Value
 // };
 
-
-class LocalVersionStore {
+class LocalVersionStore : public ThreadSyncState {
   Timestamp base_timestamp;
   std::shared_ptr<const Commit> head;
   std::unordered_map<ObjectNumber, Value> staging;
@@ -88,6 +88,8 @@ class LocalVersionStore {
   std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> last_writer; // cached
 
 public:
+  ~LocalVersionStore() = default;
+
   LocalVersionStore(ThreadID tid): base_timestamp(tid, 0) {}
 
   void stage(ObjectNumber obj, Value value);
@@ -104,7 +106,18 @@ public:
   std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head);
 
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
+  std::ostream &print(std::ostream &os) const override {
+    os << dynamic_cast<const LocalVersionStore*>(this);
+    return os;
+  }
+
   bool operator==(const LocalVersionStore& other) const;
+  bool operator==(const ThreadSyncState& other) const override {
+    auto* o = dynamic_cast<const LocalVersionStore*>(&other);
+    if (!o)
+      return false;
+    return *this == *o;
+  }
 };
 
 class GlobalVersionStore {
@@ -119,35 +132,10 @@ public:
   friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
 };
 
-// using CommitHistory = std::vector<Commit>;
-
-// struct Global {
-//   size_t val;
-//   std::optional<Commit> commit;
-//   CommitHistory history;
-// };
-
-// using Globals = std::unordered_map<std::string, Global>;
-
-// struct Conflict {
-//   std::string var;
-//   std::pair<Commit, Commit> commits;
-// };
-
-// Join logic
-// commit(ctx.globals);
-// commit(thread->ctx.globals);
-// verbose << "Pulling from thread " <<  result << std::endl;
-// if(auto conflict = pull(ctx.globals, thread->ctx.globals))
-// {
-//     using graph::Node;
-//     auto [s1, s2] = conflict->commits;
-//     auto sources = std::pair<std::shared_ptr<Node>,
-//     std::shared_ptr<Node>>{gctx.commit_map[s1], gctx.commit_map[s2]}; auto
-//     graph_conflict = graph::Conflict(conflict->var, sources);
-//     thread_append_node<graph::Join>(ctx, result, thread->ctx.tail,
-//     graph_conflict); return TerminationStatus::datarace_exception;
-// }
+class LockState : public LockSyncState {
+public:
+  std::shared_ptr<const branching::Commit> commit;
+};
 
 } // namespace branching
 
