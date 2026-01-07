@@ -14,11 +14,6 @@ namespace gitmem {
 
 namespace branching {
 
-/* A 'Global' is a structure to capture the current synchronising objects
- * representation of a global variable. The structure is the current value,
- * the current commit id for the variable, and the history of commited ids.
- */
-
 struct Timestamp {
   ThreadID thread;
   size_t counter;
@@ -53,7 +48,6 @@ struct Commit {
   std::vector<std::shared_ptr<const Commit>> parents;
 };
 
-// operator<< for Commit
 std::ostream& operator<<(std::ostream& os, const Commit& commit);
 
 struct Conflict {
@@ -68,9 +62,8 @@ inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
             << ", timestamp_b=" << c.timestamp_b << "}";
 }
 
-// Initial plumbing for fail late
-
 class LocalVersionStore : public ThreadSyncState {
+protected:
   Timestamp base_timestamp;
   std::shared_ptr<const Commit> head;
   std::unordered_map<ObjectNumber, Value> staging;
@@ -90,10 +83,10 @@ public:
   std::shared_ptr<const Commit> get_head() const { return head; }
 
   std::optional<Value> get_staged(ObjectNumber obj) const;
-  std::optional<Value> get_committed(ObjectNumber number) const;
+  virtual std::optional<Value> get_committed(ObjectNumber number) const = 0;
 
   void adopt_history(const LocalVersionStore& other);
-  std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head);
+  virtual std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head) = 0;
 
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
   std::ostream &print(std::ostream &os) const override {

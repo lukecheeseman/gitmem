@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../sync_protocol.hh"
-#include "version_store.hh"
+#include "base_version_store.hh"
 
 namespace gitmem {
 
@@ -39,10 +39,6 @@ public:
   on_unlock(ThreadContext &thread, Lock &lock) override;
 
   std::ostream &print(std::ostream &os) const override;
-
-  std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
-    return std::make_unique<LocalVersionStore>(tid);
-  }
 
   std::unique_ptr<LockSyncState> make_lock_state() const override {
     return std::make_unique<LockState>();

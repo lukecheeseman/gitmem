@@ -7,8 +7,7 @@
 
 #include "lang.hh"
 #include "sync_kind.hh"
-#include "linear/version_store.hh"
-#include "branching/version_store.hh"
+#include "sync_state.hh"
 #include "graphviz.hh"
 #include "termination_status.hh"
 #include "thread_trace.hh"
@@ -17,7 +16,6 @@
 namespace gitmem {
 
 class SyncProtocol;
-class ThreadSyncState;
 
 struct ThreadContext {
   std::unordered_map<std::string, size_t> locals;

@@ -1,4 +1,4 @@
-#include "branching/base_sync_protocol.hh"
+#include "base_sync_protocol.hh"
 
 namespace gitmem {
 
