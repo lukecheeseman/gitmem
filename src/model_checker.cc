@@ -186,6 +186,13 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
     for (const auto &ctx : failing_contexts) {
       auto path = build_output_path(output_path, idx++);
+
+      for (size_t tid = 0; tid < ctx->threads.size(); ++tid) {
+        const auto& thread = ctx->threads[tid];
+        std::cout << "=== Thread " << tid << " ===" << std::endl;
+        std::cout << thread.trace;
+        std::cout << "====================================\n";
+      }
       // ctx->print_execution_graph(path);
     }
   }

@@ -1,6 +1,7 @@
 #include "version_store.hh"
 #include <iostream>
 #include <unordered_set>
+#include "debug.hh"
 
 namespace gitmem {
 
@@ -118,81 +119,90 @@ std::shared_ptr<const Commit>
 find_lowest_common_ancestor(std::shared_ptr<const Commit> a,
                             std::shared_ptr<const Commit> b)
 {
+  if (!a || !b) return nullptr;
+
+  // Step 1: collect all ancestors of 'a'
   std::unordered_set<std::shared_ptr<const Commit>> ancestors_a;
   std::queue<std::shared_ptr<const Commit>> q;
-
-  // Collect all ancestors of 'a'
   q.push(a);
+
   while (!q.empty()) {
     auto c = q.front(); q.pop();
     if (!c) continue;
-    if (!ancestors_a.insert(c).second) continue;
-    for (auto& p : c->parents) q.push(p);
+    if (!ancestors_a.insert(c).second) continue; // already visited
+
+    for (auto& p : c->parents)
+      q.push(p);
   }
 
-  // Walk ancestors of 'b' until we find a common one
-  std::unordered_set<std::shared_ptr<const Commit>> visited;
+  // Step 2: BFS from 'b' to find first common ancestor
+  std::unordered_set<std::shared_ptr<const Commit>> visited_b;
   q.push(b);
+
   while (!q.empty()) {
     auto c = q.front(); q.pop();
     if (!c) continue;
-    if (!visited.insert(c).second) continue;
-    if (ancestors_a.count(c)) return c;  // first common ancestor
-    for (auto& p : c->parents) q.push(p);
+    if (!visited_b.insert(c).second) continue;
+
+    if (ancestors_a.count(c))
+      return c;  // first common ancestor seen
+
+    for (auto& p : c->parents)
+      q.push(p);
   }
 
-  return nullptr; // no common ancestor (shouldn’t happen)
+  return nullptr;  // disjoint histories (shouldn’t happen)
 }
 
-std::optional<Value> traverse_to_lca(
-    const std::shared_ptr<const Commit>& commit,
-    ObjectNumber var,
-    const std::shared_ptr<const Commit>& lca)
-{
-    if (!commit || commit == lca) return std::nullopt;
+// std::optional<Value> traverse_to_lca(
+//     const std::shared_ptr<const Commit>& commit,
+//     ObjectNumber var,
+//     const std::shared_ptr<const Commit>& lca)
+// {
+//     if (!commit || commit == lca) return std::nullopt;
 
-    auto it = commit->changes.find(var);
-    if (it != commit->changes.end()) return it->second;
+//     auto it = commit->changes.find(var);
+//     if (it != commit->changes.end()) return it->second;
 
-    if (commit->parents.size() > 1)
-        assert(false && "should never encounter multi-parent commit before LCA");
+//     if (commit->parents.size() > 1)
+//         assert(false && "should never encounter multi-parent commit before LCA");
 
-    return traverse_to_lca(commit->parents[0], var, lca);
-}
+//     return traverse_to_lca(commit->parents[0], var, lca);
+// }
 
-std::optional<Value> get_committed_recursive(
-    const std::shared_ptr<const Commit>& commit,
-    ObjectNumber var) {
-  if (!commit) return std::nullopt;
+// std::optional<Value> get_committed_recursive(
+//     const std::shared_ptr<const Commit>& commit,
+//     ObjectNumber var) {
+//   if (!commit) return std::nullopt;
 
-  // 1. If this commit wrote the variable, return it
-  auto it = commit->changes.find(var);
-  if (it != commit->changes.end()) return it->second;
+//   // 1. If this commit wrote the variable, return it
+//   auto it = commit->changes.find(var);
+//   if (it != commit->changes.end()) return it->second;
 
-  // 2. If single parent, recurse
-  if (commit->parents.size() == 1)
-      return get_committed_recursive(commit->parents[0], var);
+//   // 2. If single parent, recurse
+//   if (commit->parents.size() == 1)
+//       return get_committed_recursive(commit->parents[0], var);
 
-  // 3. Merge commit
-  assert(commit->parents.size() == 2); // merge commit
+//   // 3. Merge commit
+//   assert(commit->parents.size() == 2); // merge commit
 
-  auto& p1 = commit->parents[0];
-  auto& p2 = commit->parents[1];
+//   auto& p1 = commit->parents[0];
+//   auto& p2 = commit->parents[1];
 
-  auto lca = find_lowest_common_ancestor(p1, p2);
+//   auto lca = find_lowest_common_ancestor(p1, p2);
 
-  // Explore both paths from merge commit to LCA
-  std::optional<Value> v1 = traverse_to_lca(p1, var, lca);
-  std::optional<Value> v2 = traverse_to_lca(p2, var, lca);
+//   // Explore both paths from merge commit to LCA
+//   std::optional<Value> v1 = traverse_to_lca(p1, var, lca);
+//   std::optional<Value> v2 = traverse_to_lca(p2, var, lca);
 
-  assert(!v1 || !v2 || v1 == v2); // conflict-free invariant
+//   assert(!v1 || !v2 || v1 == v2); // conflict-free invariant
 
-  if (v1) return v1;          // found in one of the merge branches
-  if (v2) return v2;
+//   if (v1) return v1;          // found in one of the merge branches
+//   if (v2) return v2;
 
-  // 4. Not found yet → continue recursively from the LCA downward
-  return get_committed_recursive(lca, var);
-}
+//   // 4. Not found yet → continue recursively from the LCA downward
+//   return get_committed_recursive(lca, var);
+// }
 
 std::optional<Value> LocalVersionStore::get_committed(ObjectNumber number) const {
   if (auto it = last_writer.find(number); it != last_writer.end())
@@ -209,13 +219,43 @@ void LocalVersionStore::adopt_history(const LocalVersionStore& other) {
   last_writer = other.last_writer;
 }
 
-bool traverse_until_lca(
+bool can_reach_lca(
     const std::shared_ptr<const Commit>& commit,
     const std::shared_ptr<const Commit>& lca,
-    std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>>& out_map,
-    std::unordered_set<std::shared_ptr<const Commit>>& visited)
+    std::unordered_map<std::shared_ptr<const Commit>, bool>& memo)
+{
+  if (!commit)
+    return false;
+
+  if (commit == lca)
+    return true;
+
+  auto it = memo.find(commit);
+  if (it != memo.end())
+    return it->second;
+
+  for (const auto& parent : commit->parents) {
+    if (can_reach_lca(parent, lca, memo)) {
+      memo[commit] = true;
+      return true;
+    }
+  }
+
+  memo[commit] = false;
+  return false;
+}
+
+bool traverse_until_lca(
+  const std::shared_ptr<const Commit>& commit,
+  const std::shared_ptr<const Commit>& lca,
+  std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>>& out_map,
+  std::unordered_set<std::shared_ptr<const Commit>>& visited,
+  std::unordered_map<std::shared_ptr<const Commit>, bool>& reach_memo)
 {
   if (!commit || commit == lca || !visited.insert(commit).second)
+    return true;
+
+  if (!can_reach_lca(commit, lca, reach_memo))
     return true;
 
   for (const auto& [obj, _] : commit->changes) {
@@ -225,7 +265,7 @@ bool traverse_until_lca(
   }
 
   for (auto& parent : commit->parents) {
-    if (!traverse_until_lca(parent, lca, out_map, visited))
+    if (!traverse_until_lca(parent, lca, out_map, visited, reach_memo))
       return false;
   }
 
@@ -250,15 +290,17 @@ std::optional<Conflict> LocalVersionStore::merge_with(const LocalVersionStore& o
   );
 
   // Find lowest common ancestor of the two heads
-  auto lca = find_lowest_common_ancestor(head, other.head);
+  std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, other.head);
+  verbose << "found lca of " << head->id << " and " << other.head->id << " to be " << lca->id << std::endl;
 
   // Collect all writes after LCA for each branch
   std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> branch_a, branch_b;
   std::unordered_set<std::shared_ptr<const Commit>> visited;
 
-  traverse_until_lca(head, lca, branch_a, visited);
+  std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
+  traverse_until_lca(head, lca, branch_a, visited, reach_memo);
   visited.clear();
-  traverse_until_lca(other.head, lca, branch_b, visited);
+  traverse_until_lca(other.head, lca, branch_b, visited, reach_memo);
 
   // 1. Eager conflict detection
   for (const auto& [obj, commit_a] : branch_a) {

@@ -273,6 +273,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     if (size_t *result = std::get_if<size_t>(&result_or_term)) {
       if (*result) {
         verbose << "Assertion passed: " << expr->location().view() << std::endl;
+        thread.trace.on_assert_pass(std::string(expr->location().view()));
       } else {
         verbose << "Assertion failed: " << expr->location().view() << std::endl;
         thread.trace.on_assert_fail(std::string(expr->location().view()));

@@ -61,6 +61,12 @@ struct Conflict {
   Timestamp timestamp_b;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
+  return os << "Conflict{obj=" << c.obj
+            << ", timestamp_a=" << c.timestamp_a
+            << ", timestamp_b=" << c.timestamp_b << "}";
+}
+
 // Initial plumbing for fail late
 // enum class ReadKind {
 //   NotFound,

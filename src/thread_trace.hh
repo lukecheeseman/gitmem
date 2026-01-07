@@ -14,7 +14,7 @@ struct WriteEvent { const std::string var; const size_t value; };
 struct LockEvent { std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
 struct UnlockEvent { const std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; };
 struct JoinEvent { const ThreadID joinee_tid; std::unique_ptr<ConflictBase> maybe_conflict; };
-struct AssertEvent { const std::string condition; };
+struct AssertEvent { const std::string condition; bool pass; };
 
 struct EndEvent {};
 
@@ -89,7 +89,7 @@ inline std::ostream& operator<<(std::ostream& os, const JoinEvent& e) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const AssertEvent& e) {
-  return os << "AssertEvent(condition=\"" << e.condition << "\")";
+  return os << "AssertEvent(condition=\"" << e.condition << "\", " << (e.pass ? "pass" : "fail") << ")";
 }
 
 inline std::ostream& operator<<(std::ostream& os, const EndEvent&) {
@@ -156,8 +156,16 @@ private:
     return append<JoinEvent>(tid, std::move(conflict));
   }
 
+  std::shared_ptr<Event> on_assert(std::string expr, bool pass) {
+    return append<AssertEvent>(std::move(expr), pass);
+  }
+
+  std::shared_ptr<Event> on_assert_pass(std::string expr) {
+    return append<AssertEvent>(std::move(expr), true);
+  }
+
   std::shared_ptr<Event> on_assert_fail(std::string expr) {
-    return append<AssertEvent>(std::move(expr));
+    return append<AssertEvent>(std::move(expr), false);
   }
 
   std::shared_ptr<Event> on_end() {
