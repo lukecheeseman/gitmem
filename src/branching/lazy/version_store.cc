@@ -110,7 +110,7 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
   return std::nullopt;
 }
 
-ReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
+BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
   std::unordered_set<const Commit*> visited;
   std::unordered_set<std::shared_ptr<const Commit>> writers;
 
@@ -149,9 +149,7 @@ ReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
   auto a = (*it++)->id;
   auto b = (*it)->id;
 
-  return std::unique_ptr<ConflictBase>(
-    new ReadConflict(number, std::make_pair(a, b))
-  );
+  return Conflict(number, a, b);
 }
 
 }

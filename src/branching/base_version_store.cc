@@ -81,7 +81,7 @@ void LocalVersionStore::commit_staging() {
   head = new_commit;
 }
 
-ReadResult LocalVersionStore::read(ObjectNumber obj) const {
+BranchingReadResult LocalVersionStore::read(ObjectNumber obj) const {
   auto it = staging.find(obj);
   if (it != staging.end())
     return it->second;

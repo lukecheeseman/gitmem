@@ -56,6 +56,8 @@ struct Conflict {
   Timestamp timestamp_b;
 };
 
+using BranchingReadResult = std::variant<std::monostate, Value, Conflict>;
+
 inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
   return os << "Conflict{obj=" << c.obj
             << ", timestamp_a=" << c.timestamp_a
@@ -83,10 +85,10 @@ public:
   std::shared_ptr<const Commit> get_head() const { return head; }
 
 private:
-  virtual ReadResult get_committed(ObjectNumber number) const = 0;
+  virtual BranchingReadResult get_committed(ObjectNumber number) const = 0;
 
 public:
-  ReadResult read(ObjectNumber number) const;
+  BranchingReadResult read(ObjectNumber number) const;
 
   void adopt_history(const LocalVersionStore& other);
   virtual std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head) = 0;

@@ -1,4 +1,5 @@
 #include "base_sync_protocol.hh"
+#include "overloaded.hh"
 
 namespace gitmem {
 
@@ -29,7 +30,17 @@ ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
 
   auto& store = get_store(ctx);
 
-  return store.read(number);
+  // convert the branching read result into a regular read result
+  return std::visit(overloaded{
+    [](std::monostate) -> ReadResult { return std::monostate{}; },
+    [](const Value& v) -> ReadResult { return v; },
+    [&](const Conflict& c) -> ReadResult {
+      return std::make_shared<BranchingConflict>(
+        _global_store.get_object_name(c.obj), std::pair{c.timestamp_a, c.timestamp_b}
+      );
+    },
+
+  }, store.read(number));
 }
 
 void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var,

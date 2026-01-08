@@ -11,15 +11,19 @@ namespace termination {
 
 struct Completed {
   friend std::ostream& operator<<(std::ostream& os, const Completed&) {
-    os << "Completed successfully\n";
+    os << "Completed successfully";
     return os;
   }
 };
 
 struct DataRace {
   std::shared_ptr<ConflictBase> conflict;
+
+  explicit DataRace(std::shared_ptr<ConflictBase> conflict): conflict(conflict) {}
+
   friend std::ostream& operator<<(std::ostream& os, const DataRace& r) {
-    os << "Data race occurred: '" << *r.conflict << "\n";
+    assert(r.conflict != nullptr);
+    os << "Data race occurred: " << *r.conflict;
     return os;
   }
 };
@@ -27,7 +31,7 @@ struct DataRace {
 struct UnlockError {
   std::string lock;
   friend std::ostream& operator<<(std::ostream& os, const UnlockError& e) {
-    os << "Attempted to unlock '" << e.lock << "' without ownership\n";
+    os << "Attempted to unlock '" << e.lock << "' without ownership";
     return os;
   }
 };
@@ -35,7 +39,7 @@ struct UnlockError {
 struct AssertionFailure {
   std::string expression;
   friend std::ostream& operator<<(std::ostream& os, const AssertionFailure& a) {
-    os << "Assertion failed: " << a.expression << "\n";
+    os << "Assertion failed: " << a.expression;
     return os;
   }
 };
@@ -43,7 +47,7 @@ struct AssertionFailure {
 struct UnassignedRead {
   std::string variable;
   friend std::ostream& operator<<(std::ostream& os, const UnassignedRead& u) {
-    os << "Read of unassigned variable '" << u.variable << "'\n";
+    os << "Read of unassigned variable '" << u.variable;
     return os;
   }
 };
