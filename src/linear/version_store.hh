@@ -107,8 +107,9 @@ public:
   }
 
   friend std::ostream& operator<<(std::ostream&, const LocalVersionStore&);
+
   std::ostream &print(std::ostream &os) const override {
-    os << dynamic_cast<const LocalVersionStore*>(this);
+    os << *dynamic_cast<const LocalVersionStore*>(this);
     return os;
   }
 };

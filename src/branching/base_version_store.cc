@@ -81,9 +81,12 @@ void LocalVersionStore::commit_staging() {
   head = new_commit;
 }
 
-std::optional<Value> LocalVersionStore::get_staged(ObjectNumber obj) const {
+ReadResult LocalVersionStore::read(ObjectNumber obj) const {
   auto it = staging.find(obj);
-  return it != staging.end() ? std::make_optional(it->second) : std::nullopt;
+  if (it != staging.end())
+    return it->second;
+
+  return get_committed(obj);
 }
 
 void LocalVersionStore::adopt_history(const LocalVersionStore& other) {

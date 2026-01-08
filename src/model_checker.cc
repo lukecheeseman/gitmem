@@ -103,8 +103,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
           made_progress = true;
           cursor = cursor->extend(i);
           current_trace.push_back(i);
-          if (std::get<TerminationStatus>(prog_or_term) !=
-              TerminationStatus::completed) {
+          if (!std::holds_alternative<termination::Completed>(std::get<TerminationStatus>(prog_or_term))) {
             // Thread terminated with an error, we can stop here
             verbose << "Thread " << i << " terminated with an error"
                     << std::endl;
@@ -128,12 +127,12 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
     bool all_completed = std::all_of(
         gctx.threads.begin(), gctx.threads.end(), [](const auto &thread) {
           return thread.terminated &&
-                 *thread.terminated == TerminationStatus::completed;
+                 std::holds_alternative<termination::Completed>(*thread.terminated);
         });
     bool any_crashed = std::any_of(
         gctx.threads.begin(), gctx.threads.end(), [](const auto &thread) {
           return thread.terminated &&
-                 *thread.terminated != TerminationStatus::completed;
+                 !std::holds_alternative<termination::Completed>(*thread.terminated);
         });
 
     bool is_deadlock = !all_completed && !made_progress && cursor->is_leaf();

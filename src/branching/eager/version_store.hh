@@ -13,7 +13,7 @@ public:
   EagerLocalVersionStore(ThreadID tid) : LocalVersionStore(tid) {}
 
   std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>&) override;
-  std::optional<Value> get_committed(ObjectNumber number) const override;
+  ReadResult get_committed(ObjectNumber number) const override;
 
 };
 

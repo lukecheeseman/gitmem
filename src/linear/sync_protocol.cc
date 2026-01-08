@@ -82,7 +82,7 @@ void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
   store.stage(_global_store.get_object_number(var), value);
 }
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
   // TODO: i think we can drop the globalcontext but check after branching is
   // added
@@ -90,7 +90,7 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
   // push parent to global history
   auto& store = get_store(parent);
   if (auto conflict = push(store))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
+    return std::make_shared<LinearConflict>(std::move(*conflict));
 
   // pull into the child
   store = get_store(child);
@@ -101,19 +101,19 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
   return std::nullopt;
 }
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee) {
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
   auto& store = get_store(joiner);
   if (auto conflict = pull(store))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
+    return std::make_shared<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
 }
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_start(ThreadContext &thread) {
   // pull state from global history
   auto& store = get_store(thread);
@@ -123,32 +123,32 @@ LinearSyncProtocol::on_start(ThreadContext &thread) {
   return std::nullopt;
 };
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_end(ThreadContext &thread) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
+    return std::make_shared<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
 };
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock) {
 
   auto& store = get_store(thread);
   if (auto conflict = pull(store))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
+    return std::make_shared<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
 }
 
-std::optional<std::unique_ptr<ConflictBase>>
+std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))
-    return std::make_unique<LinearConflict>(std::move(*conflict));
+    return std::make_shared<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
 }

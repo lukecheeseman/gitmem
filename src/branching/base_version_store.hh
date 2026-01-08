@@ -82,15 +82,18 @@ public:
 
   std::shared_ptr<const Commit> get_head() const { return head; }
 
-  std::optional<Value> get_staged(ObjectNumber obj) const;
-  virtual std::optional<Value> get_committed(ObjectNumber number) const = 0;
+private:
+  virtual ReadResult get_committed(ObjectNumber number) const = 0;
+
+public:
+  ReadResult read(ObjectNumber number) const;
 
   void adopt_history(const LocalVersionStore& other);
   virtual std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head) = 0;
 
   friend std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store);
   std::ostream &print(std::ostream &os) const override {
-    os << dynamic_cast<const LocalVersionStore*>(this);
+    os << *dynamic_cast<const LocalVersionStore*>(this);
     return os;
   }
 

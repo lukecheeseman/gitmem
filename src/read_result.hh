@@ -6,6 +6,6 @@
 namespace gitmem {
 
 using Value = size_t;
-using ReadResult = std::variant<std::monostate, Value, std::unique_ptr<ConflictBase>>;
+using ReadResult = std::variant<std::monostate, Value, std::shared_ptr<ConflictBase>>;
 
 }

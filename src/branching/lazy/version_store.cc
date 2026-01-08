@@ -1,5 +1,7 @@
 #include "branching/lazy/version_store.hh"
 #include "debug.hh"
+#include <unordered_set>
+#include <functional>
 
 namespace gitmem {
 
@@ -85,15 +87,71 @@ namespace branching {
 // }
 
 
-std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shared_ptr<const Commit>&) {
-  assert(false && "todo");
-  return std::nullopt;
+std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shared_ptr<const Commit>& commit) {
+  assert(staging.empty());
+  assert(commit != nullptr);
 
+  // trivial case: same history
+  if (head == commit)
+    return std::nullopt;
+
+  // Create merge commit (no changes itself)
+  auto merge_commit = std::make_shared<const Commit>(
+    Commit{
+      .id = base_timestamp++,
+      .parents = {head, commit},
+      .changes = {}  // merge commit does not write anything
+    }
+  );
+
+  // don't check for conflicts, we do that when later read a variable
+  head = merge_commit;
+
+  return std::nullopt;
 }
 
-std::optional<Value> LazyLocalVersionStore::get_committed(ObjectNumber number) const {
-  assert(false && "todo");
-  return std::nullopt;
+ReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
+  std::unordered_set<const Commit*> visited;
+  std::unordered_set<std::shared_ptr<const Commit>> writers;
+
+  std::function<void(const std::shared_ptr<const Commit>&)> dfs =
+    [&](const std::shared_ptr<const Commit>& c) {
+      if (!c || writers.size() > 1)
+        return;
+
+      if (!visited.insert(c.get()).second)
+        return;
+
+      // If this commit writes 'number', this path is resolved
+      auto it = c->changes.find(number);
+      if (it != c->changes.end()) {
+        writers.insert(c);
+        return;
+      }
+
+      // Otherwise, explore *all* parents
+      for (const auto& p : c->parents)
+        dfs(p);
+    };
+
+  dfs(head);
+
+  if (writers.empty())
+    return std::monostate{};
+
+  if (writers.size() == 1) {
+    auto writer = *writers.begin();
+    return writer->changes.at(number);
+  }
+
+  // Conflict: multiple distinct writers
+  auto it = writers.begin();
+  auto a = (*it++)->id;
+  auto b = (*it)->id;
+
+  return std::unique_ptr<ConflictBase>(
+    new ReadConflict(number, std::make_pair(a, b))
+  );
 }
 
 }

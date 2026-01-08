@@ -157,11 +157,11 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   return std::nullopt;
 }
 
-std::optional<Value> EagerLocalVersionStore::get_committed(ObjectNumber number) const {
+ReadResult EagerLocalVersionStore::get_committed(ObjectNumber number) const {
   if (auto it = last_writer.find(number); it != last_writer.end())
     return it->second->changes.at(number);
 
-  return std::nullopt;
+  return std::monostate{};
 }
 
 } // end branching

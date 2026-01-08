@@ -35,6 +35,8 @@ struct ThreadContext {
   friend std::ostream& operator<<(std::ostream&, const ThreadContext&);
 };
 
+using termination::TerminationStatus;
+
 struct Thread {
   ThreadID tid;
   ThreadContext ctx;

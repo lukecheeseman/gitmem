@@ -5,6 +5,7 @@
 #include "debug.hh"
 #include "interpreter.hh"
 #include "sync_protocol.hh"
+#include "overloaded.hh"
 
 namespace gitmem {
 
@@ -61,7 +62,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     if (ctx.locals.contains(var)) {
       return ctx.locals[var];
     } else {
-      return TerminationStatus::unassigned_variable_read_exception;
+      return termination::UnassignedRead(var);
     }
   } else if (e == lang::Var) {
     auto var = std::string(expr->location().view());
@@ -71,16 +72,16 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     return std::visit(overloaded{
     [&](std::monostate) -> std::variant<size_t, TerminationStatus> {
         // invalid: reading a variable that hasn't been written
-        return TerminationStatus::unassigned_variable_read_exception;
+        return termination::UnassignedRead(var);
     },
     [&](Value value) -> std::variant<size_t, TerminationStatus> {
         // normal read
         thread.trace.on_read(var, value);
         return value;
     },
-    [&](std::unique_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
+    [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
         verbose << (*conflict) << std::endl;
-        return TerminationStatus::datarace_exception;
+        return termination::DataRace(conflict);
     }
 }, result);
   } else if (e == lang::Const) {
@@ -98,7 +99,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     ThreadID child_tid = gctx.threads.size();
     ThreadContext child_ctx(child_tid, gctx.protocol);
 
-    if (std::optional<std::unique_ptr<ConflictBase>> conflict =
+    if (std::optional<std::shared_ptr<ConflictBase>> conflict =
             gctx.protocol->on_spawn(ctx, child_ctx)) {
       throw std::logic_error("This code path should never be reached");
     }
@@ -216,16 +217,16 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     if (result >= gctx.threads.size()) {
         verbose << "Join: invalid thread ID " << result
                 << ". gctx.threads.size()=" << gctx.threads.size() << std::endl;
-        return TerminationStatus::unassigned_variable_read_exception;
+        return termination::UnassignedRead(std::to_string(result));
     }
 
     auto &joinee = gctx.threads[result];
     if (joinee.terminated &&
-        (*joinee.terminated == TerminationStatus::completed)) {
+        std::holds_alternative<termination::Completed>(*joinee.terminated)) {
       if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx)) {
         verbose << (**conflict) << std::endl;
-        thread.trace.on_join(result, std::move(*conflict));
-        return TerminationStatus::datarace_exception;
+        thread.trace.on_join(result, *conflict);
+        return termination::DataRace(*conflict);
       } else {
         thread.trace.on_join(result);
       }
@@ -252,8 +253,8 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     if (auto conflict = gctx.protocol->on_lock(ctx, lock)) {
       verbose << (**conflict) << std::endl;
-      thread.trace.on_lock(var, lock.last_unlock_event, std::move(*conflict));
-      return TerminationStatus::datarace_exception;
+      thread.trace.on_lock(var, lock.last_unlock_event, *conflict);
+      return termination::DataRace(*conflict);
     }
 
     thread.trace.on_lock(var, lock.last_unlock_event);
@@ -271,13 +272,13 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     Lock& lock = gctx.get_lock(var);
     if (!lock.owner || (lock.owner && *lock.owner != thread.tid)) {
-      return TerminationStatus::unlock_exception;
+      return termination::UnlockError(var);
     }
 
     if (auto conflict = gctx.protocol->on_unlock(ctx, lock)) {
       verbose << (**conflict) << std::endl;
-      thread.trace.on_unlock(var, std::move(*conflict));
-      return TerminationStatus::datarace_exception;
+      thread.trace.on_unlock(var, *conflict);
+      return termination::DataRace(*conflict);
     }
 
     // lock.globals = ctx.globals;
@@ -298,7 +299,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       } else {
         verbose << "Assertion failed: " << expr->location().view() << std::endl;
         thread.trace.on_assert_fail(std::string(expr->location().view()));
-        return TerminationStatus::assertion_failure_exception;
+        return termination::AssertionFailure(std::string(expr->location().view()));
       }
     } else {
       return std::get<TerminationStatus>(result_or_term);
@@ -364,13 +365,14 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
   // Otherwise, we truly reached the end this iteration
   if (auto conflict = gctx.protocol->on_end(ctx)) {
     verbose << (**conflict) << std::endl;
-    thread.terminated = TerminationStatus::datarace_exception;
-    return TerminationStatus::datarace_exception;
+    TerminationStatus term = termination::DataRace(*conflict);
+    thread.terminated = term;
+    return term;
   }
 
-  thread.terminated = TerminationStatus::completed;
+  thread.terminated = termination::Completed();
   thread.trace.on_end();
-  return TerminationStatus::completed;
+  return termination::Completed();
 }
 
 /**
@@ -431,7 +433,7 @@ Interpreter::run_threads_to_sync() {
   }
 
   if (all_completed)
-    return TerminationStatus::completed;
+    return termination::Completed();
 
   return any_progress;
 }
@@ -458,39 +460,24 @@ int Interpreter::run() {
   bool exception_detected = false;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
     auto &thread = gctx.threads[i];
+
     if (thread.terminated) {
-      switch (thread.terminated.value()) {
-      case TerminationStatus::completed:
-        verbose << "Thread " << i << " terminated normally" << std::endl;
-        break;
+    verbose << "Thread " << i << ": ";
 
-      case TerminationStatus::unlock_exception:
-        verbose << "Thread " << i << " unlocked a lock it does not own"
-                << std::endl;
-        exception_detected = true;
-        break;
+    std::visit(
+      overloaded{
+        [&](const termination::Completed &t) {
+          verbose << t << std::endl;
+        },
 
-      case TerminationStatus::datarace_exception:
-        verbose << "Thread " << i << " encountered a data-race" << std::endl;
-        exception_detected = true;
-        break;
-
-      case TerminationStatus::assertion_failure_exception:
-        verbose << "Thread " << i << " failed an assertion" << std::endl;
-        exception_detected = true;
-        break;
-
-      case TerminationStatus::unassigned_variable_read_exception:
-        verbose << "Thread " << i << " read an uninitialised value"
-                << std::endl;
-        exception_detected = true;
-        break;
-
-      default:
-        verbose << "Thread " << i << " has an unhandled termination state"
-                << std::endl;
-        break;
-      }
+        [&](const auto &t) {
+          // Any non-completed termination is exceptional
+          verbose << t << std::endl;
+          exception_detected = true;
+        }
+      },
+      *thread.terminated
+    );
     } else {
       exception_detected = true;
       thread.trace.on_end();

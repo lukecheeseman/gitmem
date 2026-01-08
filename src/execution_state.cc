@@ -141,7 +141,7 @@ std::ostream& operator<<(std::ostream& os, const ThreadContext& ctx) {
     os << k << "=" << v;
   }
 
-  os << "}"; //, tail=" << ctx.tail;
+  os << "}, "; //, tail=" << ctx.tail;
 
   os << *(ctx.sync);
 
@@ -157,9 +157,6 @@ void show_lock(const std::string &lock_name, const struct Lock &lock) {
     std::cout << "<free>";
   }
   std::cout << std::endl;
-  // for (auto &[var, global] : lock.globals) {
-  //   show_global(var, global);
-  // }
 }
 
 void GlobalContext::print(std::ostream& os, bool show_all) const {
@@ -169,7 +166,7 @@ void GlobalContext::print(std::ostream& os, bool show_all) const {
   for (size_t i = 0; i < threads.size(); i++) {
     auto& thread = threads[i];
     if (show_all || !thread.terminated ||
-        *threads[i].terminated != TerminationStatus::completed) {
+        !std::holds_alternative<termination::Completed>(*thread.terminated)) {
       os << "---- Thread " << i << std::endl;
       os << threads[i] << std::endl;
       os << std::endl;

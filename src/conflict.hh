@@ -11,6 +11,7 @@ struct ConflictBase {
                                   const ConflictBase &conflict) {
     return conflict.print(os);
   }
+  virtual bool operator==(const ConflictBase &other) const = 0;
 };
 
 template <typename VersionID>
@@ -22,6 +23,17 @@ struct Conflict : ConflictBase {
       : var(std::move(var)), versions(std::move(versions)) {}
 
   std::ostream &print(std::ostream &os) const override;
+
+  bool operator==(const Conflict &other) const {
+    return var == other.var && versions == other.versions;
+  }
+
+  bool operator==(const ConflictBase& other) const override {
+    auto* o = dynamic_cast<const Conflict*>(&other);
+    if (!o)
+      return false;
+    return *this == *o;
+  }
 };
 
 template <typename T>

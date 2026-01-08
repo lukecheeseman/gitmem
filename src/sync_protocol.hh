@@ -26,22 +26,22 @@ public:
   virtual void write(ThreadContext &ctx, const std::string &var,
                      size_t value) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_spawn(ThreadContext &parent, ThreadContext &child) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_join(ThreadContext &joiner, ThreadContext &joinee) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_start(ThreadContext &thread) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_end(ThreadContext &thread) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_lock(ThreadContext &thread, Lock &lock) = 0;
 
-  virtual std::optional<std::unique_ptr<ConflictBase>>
+  virtual std::optional<std::shared_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock) = 0;
 
 

@@ -11,6 +11,8 @@
 
 namespace gitmem {
 
+using termination::TerminationStatus;
+
 template <typename T>
 using StepResult = std::variant<T, TerminationStatus>;
 

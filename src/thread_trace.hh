@@ -9,11 +9,11 @@ struct Event;
 
 struct StartEvent {};
 struct SpawnEvent { const ThreadID child_tid; };
-struct ReadEvent { const std::string var; const size_t value; std::unique_ptr<ConflictBase> maybe_conflict; };
+struct ReadEvent { const std::string var; const size_t value; std::shared_ptr<ConflictBase> maybe_conflict; };
 struct WriteEvent { const std::string var; const size_t value; };
-struct LockEvent { std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
-struct UnlockEvent { const std::string lock_name; std::unique_ptr<ConflictBase> maybe_conflict; };
-struct JoinEvent { const ThreadID joinee_tid; std::unique_ptr<ConflictBase> maybe_conflict; };
+struct LockEvent { std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
+struct UnlockEvent { const std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; };
+struct JoinEvent { const ThreadID joinee_tid; std::shared_ptr<ConflictBase> maybe_conflict; };
 struct AssertEvent { const std::string condition; bool pass; };
 
 struct EndEvent {};
@@ -139,8 +139,8 @@ private:
     return append<SpawnEvent>(child_tid);
   }
 
-  std::shared_ptr<Event> on_read(const std::string text, const size_t value, std::unique_ptr<ConflictBase> conflict = nullptr) {
-    return append<ReadEvent>(std::move(text), value, std::move(conflict));
+  std::shared_ptr<Event> on_read(const std::string text, const size_t value, std::shared_ptr<ConflictBase> conflict = nullptr) {
+    return append<ReadEvent>(std::move(text), value, conflict);
   }
 
   std::shared_ptr<Event> on_write(const std::string text, const size_t value) {
@@ -149,16 +149,16 @@ private:
 
   std::shared_ptr<Event> on_lock(const std::string lock_name,
                                  std::shared_ptr<Event> last_unlock_event,
-                                 std::unique_ptr<ConflictBase> conflict = nullptr) {
+                                 std::shared_ptr<ConflictBase> conflict = nullptr) {
     return append<LockEvent>(std::move(lock_name), std::move(conflict), last_unlock_event);
   }
 
-  std::shared_ptr<Event> on_unlock(const std::string lock_name, std::unique_ptr<ConflictBase> conflict = nullptr) {
-    return append<UnlockEvent>(std::move(lock_name), std::move(conflict));
+  std::shared_ptr<Event> on_unlock(const std::string lock_name, std::shared_ptr<ConflictBase> conflict = nullptr) {
+    return append<UnlockEvent>(std::move(lock_name), conflict);
   }
 
-  std::shared_ptr<Event> on_join(ThreadID tid, std::unique_ptr<ConflictBase> conflict = nullptr) {
-    return append<JoinEvent>(tid, std::move(conflict));
+  std::shared_ptr<Event> on_join(ThreadID tid, std::shared_ptr<ConflictBase> conflict = nullptr) {
+    return append<JoinEvent>(tid, conflict);
   }
 
   std::shared_ptr<Event> on_assert(std::string expr, bool pass) {

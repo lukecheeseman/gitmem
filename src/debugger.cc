@@ -3,6 +3,7 @@
 #include "debug.hh"
 #include "debugger.hh"
 #include "interpreter.hh"
+#include "overloaded.hh"
 
 namespace gitmem {
 /** A command that can be parsed by the debugger. Some commands store a
@@ -80,23 +81,29 @@ enum class StepKind {
 struct StepUIResult {
   StepKind kind;
   std::optional<TerminationStatus> termination;
-  std::string message;
+  std::optional<std::string> message;
 
   static StepUIResult progressed() {
-    return {StepKind::Progressed, std::nullopt, ""};
+    return {StepKind::Progressed, std::nullopt, std::nullopt};
   }
 
   static StepUIResult blocked(std::string msg) {
     return {StepKind::Blocked, std::nullopt, std::move(msg)};
   }
 
-  static StepUIResult terminated(TerminationStatus t, std::string msg) {
-    return {StepKind::Terminated, t, std::move(msg)};
+  static StepUIResult terminated(TerminationStatus t) {
+    return {StepKind::Terminated, t, std::nullopt};
   }
 
   static StepUIResult invalid(std::string msg) {
     return {StepKind::Invalid, std::nullopt, std::move(msg)};
   }
+
+  bool has_message() { return message.has_value(); }
+  std::string& get_message() { return *message; }
+
+  bool has_terminated() { return termination.has_value(); }
+  TerminationStatus& get_termination() { return *termination; }
 };
 
 StepUIResult step_thread(Interpreter& interp, ThreadID tid) {
@@ -110,15 +117,7 @@ StepUIResult step_thread(Interpreter& interp, ThreadID tid) {
   auto& thread = gctx.threads[tid];
 
   if (thread.terminated) {
-    if (*thread.terminated == TerminationStatus::completed) {
-      return StepUIResult::terminated(
-          *thread.terminated,
-          "Thread " + std::to_string(tid) + " has terminated normally");
-    } else {
-      return StepUIResult::terminated(
-          *thread.terminated,
-          "Thread " + std::to_string(tid) + " has terminated with an error");
-    }
+    StepUIResult::terminated(*thread.terminated);
   }
 
   auto prog_or_term = interp.progress_thread(gctx.threads[tid]);
@@ -134,48 +133,7 @@ StepUIResult step_thread(Interpreter& interp, ThreadID tid) {
   }
 
   auto term = std::get<TerminationStatus>(prog_or_term);
-
-  switch (term) {
-    case TerminationStatus::completed:
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) + " terminated normally");
-
-    case TerminationStatus::datarace_exception:
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) +
-          " encountered a data race and was terminated");
-
-    case TerminationStatus::assertion_failure_exception: {
-      auto expr =
-          thread.block->at(thread.pc) / lang::Stmt / lang::Expr;
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) +
-          " failed assertion '" +
-          std::string(expr->location().view()) +
-          "' and was terminated");
-    }
-
-    case TerminationStatus::unassigned_variable_read_exception:
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) +
-          " read an uninitialised variable");
-
-    case TerminationStatus::unlock_exception:
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) +
-          " unlocked a lock it does not own");
-
-    default:
-      return StepUIResult::terminated(
-          term,
-          "Thread " + std::to_string(tid) +
-          " terminated with an unknown error");
-  }
+  return StepUIResult::terminated(term);
 }
 
 /** Print the execution graph if requested */
@@ -194,8 +152,20 @@ StepUIResult do_step(Interpreter &interp,
                    bool print_graphs,
                    const std::filesystem::path &output_file) {
     StepUIResult result = step_thread(interp, tid);
-    if (!result.message.empty())
-        std::cout << result.message << std::endl;
+    if (result.has_message())
+        std::cout << result.get_message() << std::endl;
+    if (result.has_terminated()) {
+      std::cout << "Thread " << tid << ": ";
+      std::visit(
+        overloaded{
+          [&](const auto &t) {
+            // Any non-completed termination is exceptional
+            std::cout << t << std::endl;
+          }
+        },
+        result.get_termination()
+      );
+    }
 
     maybe_print_graph(interp, print_graphs, output_file);
     return result;
