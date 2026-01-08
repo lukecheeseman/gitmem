@@ -152,6 +152,28 @@ std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
   return os;
 }
 
+bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_ptr<const Commit>& other, std::unordered_map<std::shared_ptr<const Commit>, bool>& memo) {
+  if (!commit)
+    return false;
+
+  if (commit == other)
+    return true;
+
+  auto it = memo.find(commit);
+  if (it != memo.end())
+    return it->second;
+
+  for (const auto& parent : commit->parents) {
+    if (can_reach(parent, other, memo)) {
+      memo[commit] = true;
+      return true;
+    }
+  }
+
+  memo[commit] = false;
+  return false;
+}
+
 } // branching
 
 } // gitmem

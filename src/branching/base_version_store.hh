@@ -48,6 +48,8 @@ struct Commit {
   std::vector<std::shared_ptr<const Commit>> parents;
 };
 
+bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_ptr<const Commit>& lca, std::unordered_map<std::shared_ptr<const Commit>, bool>& memo);
+
 std::ostream& operator<<(std::ostream& os, const Commit& commit);
 
 struct Conflict {

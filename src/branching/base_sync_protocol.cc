@@ -27,7 +27,6 @@ std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
 ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
                                            const std::string &var) {
   ObjectNumber number = _global_store.get_object_number(var);
-
   auto& store = get_store(ctx);
 
   // convert the branching read result into a regular read result

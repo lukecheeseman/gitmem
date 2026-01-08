@@ -107,50 +107,61 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
   // don't check for conflicts, we do that when later read a variable
   head = merge_commit;
 
+  // whenever we merge, we loose all the information about the last writer
+  last_writer.clear();
+
   return std::nullopt;
 }
 
+// Thought, if we merge two paths that conflict on a variable, but we never read it
+// and just right to it, is that okay ?
+// if (auto it = last_writer.find(number); it != last_writer.end()) {
+//   return it->second->changes.at(number);
+// }
+
 BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
-  std::unordered_set<const Commit*> visited;
-  std::unordered_set<std::shared_ptr<const Commit>> writers;
 
-  std::function<void(const std::shared_ptr<const Commit>&)> dfs =
-    [&](const std::shared_ptr<const Commit>& c) {
-      if (!c || writers.size() > 1)
-        return;
 
-      if (!visited.insert(c.get()).second)
-        return;
+  std::vector<std::shared_ptr<const Commit>> writers;
+  std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
 
-      // If this commit writes 'number', this path is resolved
-      auto it = c->changes.find(number);
-      if (it != c->changes.end()) {
-        writers.insert(c);
+  std::function<void(std::shared_ptr<const Commit>)> dfs;
+  dfs = [&](std::shared_ptr<const Commit> c) {
+    if (!c) return;
+
+    // If we've already found a writer that is an ancestor of c, skip
+    for (auto it = writers.begin(); it != writers.end(); ) {
+      if (can_reach(c, *it, reach_memo)) {
+        // existing writer is ancestor of this commit, remove it
+        it = writers.erase(it);
+      } else if (can_reach(*it, c, reach_memo)) {
+        // this commit is ancestor of existing writer, ignore this path
         return;
+      } else {
+          ++it;
       }
+    }
 
-      // Otherwise, explore *all* parents
-      for (const auto& p : c->parents)
-        dfs(p);
-    };
+    if (c->changes.contains(number)) {
+      writers.push_back(c);
+      return;
+    }
+
+    for (auto& p : c->parents)
+      dfs(p);
+  };
 
   dfs(head);
 
-  if (writers.empty())
-    return std::monostate{};
+  if (writers.empty()) return std::monostate{};
+  if (writers.size() == 1) return writers[0]->changes.at(number);
 
-  if (writers.size() == 1) {
-    auto writer = *writers.begin();
-    return writer->changes.at(number);
-  }
-
-  // Conflict: multiple distinct writers
-  auto it = writers.begin();
-  auto a = (*it++)->id;
-  auto b = (*it)->id;
-
+  // conflict
+  auto a = writers[0]->id;
+  auto b = writers[1]->id;
   return Conflict(number, a, b);
 }
+
 
 }
 

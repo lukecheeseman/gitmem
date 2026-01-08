@@ -7,32 +7,6 @@ namespace gitmem {
 
 namespace branching {
 
-bool can_reach_lca(
-    const std::shared_ptr<const Commit>& commit,
-    const std::shared_ptr<const Commit>& lca,
-    std::unordered_map<std::shared_ptr<const Commit>, bool>& memo)
-{
-  if (!commit)
-    return false;
-
-  if (commit == lca)
-    return true;
-
-  auto it = memo.find(commit);
-  if (it != memo.end())
-    return it->second;
-
-  for (const auto& parent : commit->parents) {
-    if (can_reach_lca(parent, lca, memo)) {
-      memo[commit] = true;
-      return true;
-    }
-  }
-
-  memo[commit] = false;
-  return false;
-}
-
 bool traverse_until_lca(
   const std::shared_ptr<const Commit>& commit,
   const std::shared_ptr<const Commit>& lca,
@@ -43,7 +17,7 @@ bool traverse_until_lca(
   if (!commit || commit == lca || !visited.insert(commit).second)
     return true;
 
-  if (!can_reach_lca(commit, lca, reach_memo))
+  if (!can_reach(commit, lca, reach_memo))
     return true;
 
   for (const auto& [obj, _] : commit->changes) {
