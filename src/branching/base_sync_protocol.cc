@@ -26,26 +26,24 @@ std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
 
 ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
                                            const std::string &var) {
-  ObjectNumber number = _global_store.get_object_number(var);
   auto& store = get_store(ctx);
 
-  // convert the branching read result into a regular read result
   return std::visit(overloaded{
     [](std::monostate) -> ReadResult { return std::monostate{}; },
     [](const Value& v) -> ReadResult { return v; },
     [&](const Conflict& c) -> ReadResult {
       return std::make_shared<BranchingConflict>(
-        _global_store.get_object_name(c.obj), std::pair{c.timestamp_a, c.timestamp_b}
+        c.obj, std::pair{c.timestamp_a, c.timestamp_b}
       );
     },
 
-  }, store.read(number));
+  }, store.read(var));
 }
 
 void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var,
                                   size_t value) {
   auto& store = get_store(ctx);
-  store.stage(_global_store.get_object_number(var), value);
+  store.stage(var, value);
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
@@ -71,7 +69,7 @@ BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee)
   std::optional<Conflict> conflict = joiner_store.merge_with_commit(joinee_store.get_head());
   if (conflict) {
     return std::make_shared<BranchingConflict>(
-      _global_store.get_object_name(conflict->obj),
+      conflict->obj,
       std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
   }
 
@@ -104,7 +102,7 @@ BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock) {
     std::optional<Conflict> conflict = store.merge_with_commit(lock_commit);
     if (conflict) {
       return std::make_shared<BranchingConflict>(
-        _global_store.get_object_name(conflict->obj),
+        conflict->obj,
         std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
     }
   }

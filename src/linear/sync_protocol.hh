@@ -49,7 +49,7 @@ public:
   std::string build_revision_graph_dot(const std::vector<const ThreadSyncState*>& thread_states) const override;
 
   std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
-    return std::make_unique<LocalVersionStore>();
+    return std::make_unique<LocalVersionStore>(tid);
   }
 
   std::unique_ptr<LockSyncState> make_lock_state() const override {

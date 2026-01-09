@@ -10,7 +10,7 @@ namespace branching {
 bool traverse_until_lca(
   const std::shared_ptr<const Commit>& commit,
   const std::shared_ptr<const Commit>& lca,
-  std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>>& out_map,
+  std::unordered_map<std::string, std::shared_ptr<const Commit>>& out_map,
   std::unordered_set<std::shared_ptr<const Commit>>& visited,
   std::unordered_map<std::shared_ptr<const Commit>, bool>& reach_memo)
 {
@@ -95,7 +95,7 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   verbose << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
 
   // Collect all writes after LCA for each branch
-  std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> branch_a, branch_b;
+  std::unordered_map<std::string, std::shared_ptr<const Commit>> branch_a, branch_b;
   std::unordered_set<std::shared_ptr<const Commit>> visited;
 
   std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
@@ -131,9 +131,9 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   return std::nullopt;
 }
 
-BranchingReadResult EagerLocalVersionStore::get_committed(ObjectNumber number) const {
-  if (auto it = last_writer.find(number); it != last_writer.end())
-    return it->second->changes.at(number);
+BranchingReadResult EagerLocalVersionStore::get_committed(std::string var) const {
+  if (auto it = last_writer.find(var); it != last_writer.end())
+    return it->second->changes.at(var);
 
   return std::monostate{};
 }

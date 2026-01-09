@@ -119,16 +119,16 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
 //   return it->second->changes.at(number);
 // }
 
-BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
+BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const {
   // Thought, if we merge two paths that conflict on a variable, but we never read it
-  // if (auto it = last_writer.find(number); it != last_writer.end()) {
-    // return it->second->changes.at(number);
+  // if (auto it = last_writer.find(var); it != last_writer.end()) {
+    // return it->second->changes.at(var);
   // }
 
   std::vector<std::shared_ptr<const Commit>> writers;
   std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
 
-  // std::cout << "Get committed for " << number << std::endl;
+  // std::cout << "Get committed for " << var << std::endl;
 
   std::function<void(std::shared_ptr<const Commit>)> dfs;
   dfs = [&](std::shared_ptr<const Commit> c) {
@@ -153,7 +153,7 @@ BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) co
       }
     }
 
-    if (c->changes.contains(number)) {
+    if (c->changes.contains(var)) {
       writers.push_back(c);
       return;
     }
@@ -168,14 +168,14 @@ BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) co
 
   if (writers.empty()) return std::monostate{};
   if (writers.size() == 1) {
-    // last_writer[number] = writers[0];
-    return writers[0]->changes.at(number);
+    // last_writer[var] = writers[0];
+    return writers[0]->changes.at(var);
   }
 
   // conflict
   auto a = writers[0]->id;
   auto b = writers[1]->id;
-  return Conflict(number, a, b);
+  return Conflict(var, a, b);
 }
 
 

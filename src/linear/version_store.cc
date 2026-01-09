@@ -12,27 +12,27 @@ namespace linear {
 // LocalVersionStore
 // -----------------------------
 
-void LocalVersionStore::stage(ObjectNumber obj, Value value) {
+void LocalVersionStore::stage(std::string obj, Value value) {
   _staging[obj] = value;
 }
 
 void LocalVersionStore::clear_staging() { _staging.clear(); }
 
-void LocalVersionStore::advance_base(Timestamp ts) { _base_timestamp = ts; }
+void LocalVersionStore::advance_base(uint64_t ts) { _timestamp = ts; }
 
-std::optional<Value> LocalVersionStore::get_staged(ObjectNumber obj) {
+std::optional<Value> LocalVersionStore::get_staged(std::string obj) {
   auto it = _staging.find(obj);
   return it != _staging.end() ? std::make_optional(it->second) : std::nullopt;
 }
 
 bool LocalVersionStore::operator==(const LocalVersionStore& other) const {
-  return _base_timestamp == other._base_timestamp &&
+  return _timestamp == other._timestamp &&
          _staging == other._staging;
 }
 
 std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
   os << "LocalVersionStore{"
-    << "base=" << store._base_timestamp
+    << "base=" << store._timestamp
     << ", staged={";
 
   bool first = true;
@@ -50,29 +50,9 @@ std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
 // GlobalVersionStore
 // -----------------------------
 
-ObjectNumber GlobalVersionStore::get_object_number(std::string var) {
-  auto it = _object_numbers.find(var);
-  if (it != _object_numbers.end()) {
-    return it->second;
-  } else {
-    ObjectNumber number = _next_object++;
-    _object_numbers[var] = number;
-    return number;
-  }
-}
-
-std::string GlobalVersionStore::get_object_name(ObjectNumber find) {
-  for (const auto &[name, number] : _object_numbers) {
-    if (number == find)
-      return name;
-  }
-  assert(false && "failed to find object name for object number");
-  return "";
-}
-
 std::optional<Value>
-GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj,
-                                              Timestamp ts) const {
+GlobalVersionStore::get_version_for_timestamp(std::string obj,
+                                              uint64_t ts) const {
   const auto it = _history.find(obj);
 
   if (it == _history.end())
@@ -81,7 +61,7 @@ GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj,
   const VersionHistory &history = it->second;
   for (VersionHistory::const_reverse_iterator riter = history.rbegin();
        riter != history.rend(); ++riter) {
-    if (riter->timestamp() <= ts)
+    if (riter->timestamp().counter <= ts)
       return riter->value();
   }
 
@@ -89,8 +69,8 @@ GlobalVersionStore::get_version_for_timestamp(ObjectNumber obj,
 }
 
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
-    Timestamp base,
-    const std::unordered_map<ObjectNumber, Value> &changes) const {
+    uint64_t base,
+    const std::unordered_map<std::string, Value> &changes) const {
   for (const auto &[obj, _] : changes) {
     auto it = _history.find(obj);
     if (it == _history.end()) {
@@ -98,7 +78,7 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
     }
 
     const Version &latest = it->second.back();
-    if (latest.timestamp() > base) {
+    if (latest.timestamp().counter > base) {
       return Conflict{
           .object = obj, .local_base = base, .global_head = latest.timestamp()};
     }
@@ -106,32 +86,27 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
   return std::nullopt;
 }
 
-Timestamp GlobalVersionStore::apply_changes(
-    Timestamp base, const std::unordered_map<ObjectNumber, Value> &changes) {
+uint64_t GlobalVersionStore::apply_changes(
+    ThreadID tid, uint64_t base, const std::unordered_map<std::string, Value> &changes) {
   if (auto conflict = check_conflicts(base, changes)) {
     throw std::logic_error("apply_changes called with conflicts");
   }
 
-  Timestamp new_ts = ++_timestamp;
+  // Increment the global counter and create new timestamp with thread info from base
+  Timestamp new_ts{tid, ++_counter};
+
   for (const auto &[obj, value] : changes) {
     _history[obj].emplace_back(new_ts, value);
   }
 
-  _timestamp = new_ts;
-  return new_ts;
+  return _counter;
 }
 
 std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
-  os << "GlobalVersionStore(timestamp=" << store._timestamp
-     << ", next_object=" << store._next_object << ")\n";
+  os << "GlobalVersionStore(counter=" << store._counter << ")\n";
 
-  for (const auto& [obj_num, history] : store._history) {
-    os << "  Object " << obj_num;
-    auto it = std::find_if(store._object_numbers.begin(), store._object_numbers.end(),
-                           [&](const auto& pair){ return pair.second == obj_num; });
-    if (it != store._object_numbers.end())
-      os << " (" << it->first << ")";
-    os << ":\n";
+  for (const auto& [obj_name, history] : store._history) {
+    os << "  Object " << obj_name << ":\n";
 
     for (const auto& version : history) {
       os << "    [" << version.timestamp() << "] = " << version.value() << "\n";

@@ -1,6 +1,8 @@
 #include "linear/sync_protocol.hh"
 #include "debug.hh"
 #include <iostream>
+#include <sstream>
+#include <set>
 
 namespace gitmem {
 
@@ -21,23 +23,64 @@ std::ostream &LinearSyncProtocol::print(std::ostream &os) const {
 
 std::string LinearSyncProtocol::build_revision_graph_dot(
     const std::vector<const ThreadSyncState*>& thread_states) const {
-  // Linear protocol doesn't have a commit graph structure
-  return "";
+
+  std::ostringstream dot;
+  dot << "digraph LinearHistory {\n";
+  dot << "  rankdir=BT;\n";
+  dot << "  node [shape=box];\n";
+
+  const auto& history = _global_store.get_history();
+
+  if (history.empty()) {
+    dot << "}\n";
+    return dot.str();
+  }
+
+  // Create a subgraph for each variable showing its version history
+  for (const auto& [obj_name, versions] : history) {
+    dot << "  subgraph cluster_" << obj_name << " {\n";
+    dot << "    label=\"" << obj_name << "\";\n";
+    dot << "    style=dashed;\n";
+
+    // Create nodes for each version
+    for (size_t i = 0; i < versions.size(); ++i) {
+      const auto& version = versions[i];
+      std::ostringstream node_id;
+      node_id << obj_name << "_v" << i;
+
+      std::ostringstream label;
+      label << version.timestamp() << "\\n" << obj_name << "=" << version.value();
+
+      dot << "    \"" << node_id.str() << "\" [label=\"" << label.str() << "\"];\n";
+    }
+
+    // Create edges between consecutive versions
+    for (size_t i = 1; i < versions.size(); ++i) {
+      std::ostringstream prev_id, curr_id;
+      prev_id << obj_name << "_v" << (i - 1);
+      curr_id << obj_name << "_v" << i;
+      dot << "    \"" << curr_id.str() << "\" -> \"" << prev_id.str() << "\";\n";
+    }
+
+    dot << "  }\n";
+  }
+
+  dot << "}\n";
+  return dot.str();
 }
 
 std::optional<LinearConflict>
 LinearSyncProtocol::push(LocalVersionStore &local) {
-  if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
+  if (auto conflict = _global_store.check_conflicts(local.timestamp(),
                                                     local.staged_changes())) {
 
-    // reshape the conflict
     return std::make_optional<LinearConflict>(
-        _global_store.get_object_name(conflict->object),
+        conflict->object,
         std::make_pair(conflict->local_base, conflict->global_head));
   }
 
-  Timestamp new_base = _global_store.apply_changes(
-      local.base_timestamp(), local.staged_changes());
+  uint64_t new_base = _global_store.apply_changes(
+      local.thread(), local.timestamp(), local.staged_changes());
 
   local.clear_staging();
   local.advance_base(new_base);
@@ -46,15 +89,15 @@ LinearSyncProtocol::push(LocalVersionStore &local) {
 
 std::optional<LinearConflict>
 LinearSyncProtocol::pull(LocalVersionStore &local) {
-  if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
+  if (auto conflict = _global_store.check_conflicts(local.timestamp(),
                                                     local.staged_changes())) {
 
     return std::make_optional<LinearConflict>(
-        _global_store.get_object_name(conflict->object),
+        conflict->object,
         std::make_pair(conflict->local_base, conflict->global_head));
   }
 
-  local.advance_base(_global_store.current_timestamp());
+  local.advance_base( _global_store.current_counter());
   return std::nullopt;
 }
 
@@ -62,15 +105,13 @@ LinearSyncProtocol::~LinearSyncProtocol() = default;
 
 ReadResult LinearSyncProtocol::read(ThreadContext &ctx,
                                                const std::string &var) {
-  ObjectNumber number = _global_store.get_object_number(var);
-
   auto& store = get_store(ctx);
 
-  if (auto result = store.get_staged(number))
+  if (auto result = store.get_staged(var))
     return *result;
 
   std::optional<size_t> value = _global_store.get_version_for_timestamp(
-      number, store.base_timestamp());
+      var, store.timestamp());
   if (value)
     return *value;
 
@@ -85,7 +126,7 @@ void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
                                size_t value) {
   // write into the staging area of the thread
   auto& store = get_store(ctx);
-  store.stage(_global_store.get_object_number(var), value);
+  store.stage(var, value);
 }
 
 std::optional<std::shared_ptr<ConflictBase>>

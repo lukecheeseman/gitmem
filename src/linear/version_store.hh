@@ -16,40 +16,19 @@ namespace linear {
 // Timestamp
 // -----------------------------
 
-class LargeCounter {
-  uint64_t _epoch{0};
-  uint64_t _counter{0};
+struct Timestamp {
+  size_t thread{0};
+  uint64_t counter{0};
 
-public:
-  auto operator<=>(const LargeCounter &) const = default;
+  auto operator<=>(const Timestamp &) const = default;
 
-  LargeCounter &operator++() {
-    if (_counter == UINT64_MAX) {
-      _counter = 0;
-      assert(_epoch != UINT64_MAX && "timestamp overflow");
-      ++_epoch;
-    } else {
-      ++_counter;
-    }
-    return *this;
-  }
-
-  LargeCounter operator++(int) {
-    LargeCounter old = *this;
-    ++(*this);
-    return old;
-  }
-
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const LargeCounter &counter) {
-    os << counter._epoch << ":" << counter._counter;
+  friend std::ostream &operator<<(std::ostream &os, const Timestamp &ts) {
+    os << "t" << ts.thread << ":" << ts.counter;
     return os;
   }
 };
 
-using Timestamp = LargeCounter;
 using Value = size_t;
-using ObjectNumber = uint64_t;
 
 // -----------------------------
 // Version
@@ -73,7 +52,7 @@ using VersionHistory = std::vector<Version>;
 // -----------------------------
 
 struct Conflict {
-  ObjectNumber object;
+  std::string object;
   Timestamp local_base;
   Timestamp global_head;
 };
@@ -83,19 +62,24 @@ struct Conflict {
 // -----------------------------
 
 class LocalVersionStore : public ThreadSyncState {
-  Timestamp _base_timestamp{};
-  std::unordered_map<ObjectNumber, Value> _staging;
+  ThreadID tid;
+  uint64_t _timestamp;
+  std::unordered_map<std::string, Value> _staging;
 
 public:
   ~LocalVersionStore() = default;
 
-  Timestamp base_timestamp() const { return _base_timestamp; }
+  LocalVersionStore(ThreadID tid) : tid(tid), _timestamp(0) {}
+
+  ThreadID thread() const { return tid; }
+
+  uint64_t timestamp() const { return _timestamp; }
   const auto &staged_changes() const { return _staging; }
 
-  void stage(ObjectNumber obj, Value value);
+  void stage(std::string obj, Value value);
   void clear_staging();
-  void advance_base(Timestamp ts);
-  std::optional<Value> get_staged(ObjectNumber obj);
+  void advance_base(uint64_t ts);
+  std::optional<Value> get_staged(std::string obj);
 
   bool operator==(const LocalVersionStore& other) const;
 
@@ -119,28 +103,27 @@ public:
 // -----------------------------
 
 class GlobalVersionStore {
-  Timestamp _timestamp{};
-  ObjectNumber _next_object{0};
-  std::unordered_map<ObjectNumber, VersionHistory> _history;
-  std::unordered_map<std::string, ObjectNumber> _object_numbers;
+  uint64_t _counter{0};
+  std::unordered_map<std::string, VersionHistory> _history;
 
 public:
-  Timestamp current_timestamp() const { return _timestamp; }
+  uint64_t current_counter() const { return _counter; }
 
-  ObjectNumber get_object_number(std::string);
-  std::string get_object_name(ObjectNumber);
-
-  std::optional<Value> get_version_for_timestamp(ObjectNumber, Timestamp) const;
+  std::optional<Value> get_version_for_timestamp(std::string, uint64_t) const;
 
   std::optional<Conflict>
-  check_conflicts(Timestamp base,
-                  const std::unordered_map<ObjectNumber, Value> &changes) const;
+  check_conflicts(uint64_t base,
+                  const std::unordered_map<std::string, Value> &changes) const;
 
-  Timestamp
-  apply_changes(Timestamp base,
-                const std::unordered_map<ObjectNumber, Value> &changes);
+  uint64_t
+  apply_changes(ThreadID tid, uint64_t base,
+                const std::unordered_map<std::string, Value> &changes);
 
   friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
+
+  std::unordered_map<std::string, VersionHistory> get_history() const {
+    return _history;
+  }
 };
 
 } // namespace linear

@@ -54,7 +54,7 @@ std::ostream& operator<<(std::ostream& os, const Commit& commit) {
   return os;
 }
 
-void LocalVersionStore::stage(ObjectNumber obj, Value value) {
+void LocalVersionStore::stage(std::string obj, Value value) {
   staging[obj] = value;
 }
 
@@ -83,12 +83,12 @@ void LocalVersionStore::commit_staging() {
   head = new_commit;
 }
 
-BranchingReadResult LocalVersionStore::read(ObjectNumber obj) const {
-  auto it = staging.find(obj);
+BranchingReadResult LocalVersionStore::read(std::string var) const {
+  auto it = staging.find(var);
   if (it != staging.end())
     return it->second;
 
-  return get_committed(obj);
+  return get_committed(var);
 }
 
 void LocalVersionStore::adopt_history(const LocalVersionStore& other) {
@@ -128,29 +128,8 @@ bool LocalVersionStore::operator==(const LocalVersionStore& other) const {
          staging == other.staging;
 }
 
-ObjectNumber GlobalVersionStore::get_object_number(std::string var) {
-  auto it = _object_numbers.find(var);
-  if (it != _object_numbers.end()) {
-    return it->second;
-  } else {
-    ObjectNumber number = _next_object++;
-    _object_numbers[var] = number;
-    return number;
-  }
-}
-
-std::string GlobalVersionStore::get_object_name(ObjectNumber find) {
-  for (const auto &[name, number] : _object_numbers) {
-    if (number == find)
-      return name;
-  }
-  assert(false && "failed to find object name for object number");
-  return "";
-}
-
-
 std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
-  os << "GlobalVersionStore(next_object=" << store._next_object << ")" << std::endl;
+  os << "GlobalVersionStore()" << std::endl;
   return os;
 }
 

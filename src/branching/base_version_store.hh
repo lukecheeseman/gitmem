@@ -47,11 +47,9 @@ inline std::string to_string(const Timestamp& ts) {
   return ss.str();
 }
 
-using ObjectNumber = uint64_t;
-
 struct Commit {
   Timestamp id;
-  std::unordered_map<ObjectNumber, Value> changes;
+  std::unordered_map<std::string, Value> changes;
   std::vector<std::shared_ptr<const Commit>> parents;
 };
 
@@ -62,7 +60,7 @@ bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_pt
 std::ostream& operator<<(std::ostream& os, const Commit& commit);
 
 struct Conflict {
-  ObjectNumber obj;
+  std::string obj;
   Timestamp timestamp_a;
   Timestamp timestamp_b;
 };
@@ -79,16 +77,16 @@ class LocalVersionStore : public ThreadSyncState {
 protected:
   Timestamp base_timestamp;
   std::shared_ptr<const Commit> head;
-  std::unordered_map<ObjectNumber, Value> staging;
+  std::unordered_map<std::string, Value> staging;
 
-  std::unordered_map<ObjectNumber, std::shared_ptr<const Commit>> last_writer; // cached
+  std::unordered_map<std::string, std::shared_ptr<const Commit>> last_writer; // cached
 
 public:
   ~LocalVersionStore() = default;
 
   LocalVersionStore(ThreadID tid): base_timestamp(tid, 0) {}
 
-  void stage(ObjectNumber obj, Value value);
+  void stage(std::string obj, Value value);
   void commit_staging();
 
   bool has_commited() { return staging.empty(); }
@@ -96,10 +94,10 @@ public:
   std::shared_ptr<const Commit> get_head() const { return head; }
 
 private:
-  virtual BranchingReadResult get_committed(ObjectNumber number) const = 0;
+  virtual BranchingReadResult get_committed(std::string var) const = 0;
 
 public:
-  BranchingReadResult read(ObjectNumber number) const;
+  BranchingReadResult read(std::string var) const;
 
   void adopt_history(const LocalVersionStore& other);
   virtual std::optional<Conflict> merge_with_commit(const std::shared_ptr<const Commit>& other_head) = 0;
@@ -120,14 +118,7 @@ public:
 };
 
 class GlobalVersionStore {
-  ObjectNumber _next_object{0};
-  std::unordered_map<std::string, ObjectNumber> _object_numbers;
-
 public:
-
-  ObjectNumber get_object_number(std::string);
-  std::string get_object_name(ObjectNumber);
-
   friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
 };
 
