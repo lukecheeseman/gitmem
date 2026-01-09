@@ -4,6 +4,7 @@
 #include <sstream>
 #include <stack>
 #include "debug.hh"
+#include <algorithm>
 
 namespace gitmem {
 
@@ -158,12 +159,60 @@ bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_pt
 std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commit>>& leaves) {
   std::ostringstream dot;
   dot << "digraph CommitGraph {\n";
-  dot << "  rankdir=BT;\n";              // bottom (leaves) → top (roots)
+  dot << "  rankdir=BT;\n";
   dot << "  node [shape=box];\n";
 
   std::unordered_set<const Commit*> visited;
+  std::unordered_map<ThreadID, std::vector<std::shared_ptr<const Commit>>> commits_by_thread;
   std::stack<std::shared_ptr<const Commit>> stack;
 
+  // First pass: collect all commits and organize by thread
+  for (const auto& leaf : leaves)
+    if (leaf) stack.push(leaf);
+
+  while (!stack.empty()) {
+    auto commit = stack.top();
+    stack.pop();
+
+    if (!commit || !visited.insert(commit.get()).second)
+      continue;
+
+    commits_by_thread[commit->id.thread].push_back(commit);
+
+    for (const auto& parent : commit->parents) {
+      if (parent) stack.push(parent);
+    }
+  }
+
+  // Create subgraph clusters for each thread
+  for (const auto& [thread_id, commits] : commits_by_thread) {
+    dot << "  subgraph cluster_" << thread_id << " {\n";
+    dot << "    label=\"Thread " << thread_id << "\";\n";
+    dot << "    style=dashed;\n";
+
+    for (const auto& commit : commits) {
+      const std::string cid = to_string(commit->id);
+
+      std::ostringstream label;
+      label << cid;
+      if (!commit->changes.empty()) {
+        label << "\\n";
+        bool first = true;
+        for (const auto& [obj, val] : commit->changes) {
+          if (!first) label << "\\n";
+          first = false;
+          label << obj << "→" << val;
+        }
+      }
+
+      dot << "    \"" << cid << "\" [label=\"" << label.str() << "\"];\n";
+    }
+
+    dot << "  }\n";
+  }
+
+  // Draw edges (outside clusters so they can cross boundaries)
+  visited.clear();
   for (const auto& leaf : leaves)
     if (leaf) stack.push(leaf);
 
@@ -176,23 +225,6 @@ std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commi
 
     const std::string cid = to_string(commit->id);
 
-    // Build label with commit ID and changes
-    std::ostringstream label;
-    label << cid;
-    if (!commit->changes.empty()) {
-      label << "\\n";
-      bool first = true;
-      for (const auto& [obj, val] : commit->changes) {
-        if (!first) label << "\\n";
-        first = false;
-        label << obj << "→" << val;
-      }
-    }
-
-    // Emit node with label
-    dot << "  \"" << cid << "\" [label=\"" << label.str() << "\"];\n";
-
-    // Emit edges to parents
     for (const auto& parent : commit->parents) {
       if (!parent) continue;
 

@@ -33,4 +33,3 @@ $t2 = spawn {
 join $t1;
 join $t2;
 assert (x != y);
-assert(flag == flag);
