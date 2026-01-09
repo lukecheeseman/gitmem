@@ -120,37 +120,38 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
 // }
 
 BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const {
-  // Thought, if we merge two paths that conflict on a variable, but we never read it
-  // if (auto it = last_writer.find(var); it != last_writer.end()) {
-    // return it->second->changes.at(var);
-  // }
-
   std::vector<std::shared_ptr<const Commit>> writers;
-  std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
 
-  // std::cout << "Get committed for " << var << std::endl;
+  std::cout << "Get committed for " << var << std::endl;
 
   std::function<void(std::shared_ptr<const Commit>)> dfs;
   dfs = [&](std::shared_ptr<const Commit> c) {
     if (!c) return;
-    // std::cout << c->id << " changes: {";
-    // for (const auto& [k, v] : c->changes) {
-      // std::cout << k << "->"  << v << ",";
-    // }
-    // std::cout << "}" << std::endl;
+    std::cout << c->id << " changes: {";
+    for (const auto& [k, v] : c->changes) {
+      std::cout << k << "->"  << v << ",";
+    }
+    std::cout << "}" << std::endl;
 
-    // If we've already found a writer that is an ancestor of c, skip
-    for (auto it = writers.begin(); it != writers.end(); ) {
-      if (can_reach(c, *it, reach_memo)) {
-        // std::cout << c->id << " can reach " << (*it)->id << std::endl;
-        // existing writer is ancestor of this commit, remove it
-        it = writers.erase(it);
-      } else if (can_reach(*it, c, reach_memo)) {
-        // this commit is ancestor of existing writer, ignore this path
-        return;
-      } else {
-          ++it;
+    // Check if c is an ancestor of any existing writer
+    {
+      std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
+      for (const auto& writer : writers) {
+        if (can_reach(writer, c, reach_memo)) {
+          // c is ancestor of existing writer, ignore this path
+          return;
+        }
       }
+    }
+
+    // Remove any existing writers that are ancestors of c
+    {
+      std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
+      writers.erase(
+        std::remove_if(writers.begin(), writers.end(),
+          [&](const auto& writer) { return can_reach(c, writer, reach_memo); }),
+        writers.end()
+      );
     }
 
     if (c->changes.contains(var)) {
@@ -164,7 +165,7 @@ BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const 
 
   dfs(head);
 
-  // std::cout << "=====================================" << std::endl;
+  std::cout << "=====================================" << std::endl;
 
   if (writers.empty()) return std::monostate{};
   if (writers.size() == 1) {

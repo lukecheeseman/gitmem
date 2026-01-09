@@ -575,9 +575,6 @@ int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind
 
   std::string dot = interp.context().protocol->build_revision_graph_dot(thread_state_ptrs);
   if (!dot.empty()) {
-    verbose << "=== Revision Graph ===" << std::endl;
-    verbose << dot << std::endl;
-
     // Write to file
     auto dot_file = "revision_graph.dot";
     std::ofstream out(dot_file);
