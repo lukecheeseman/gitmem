@@ -142,6 +142,7 @@ void maybe_print_graph(Interpreter& interp,
                        const std::filesystem::path &output_file) {
     if (print_graphs) {
         // gctx.print_execution_graph(output_file);
+        interp.build_and_print_revision_graph(output_file);
         verbose << "Execution graph written to " << output_file << std::endl;
     }
 }
@@ -220,6 +221,9 @@ int interpret_interactive(const trieste::Node ast,
     size_t prev_no_threads = 1;
     Command command = {Command::List};
     bool print_graphs = true;
+
+    // clear the graph at the start
+    maybe_print_graph(interp, print_graphs, output_file);
 
     while (command.cmd != Command::Quit) {
         // Print threads if new threads appeared or command is List

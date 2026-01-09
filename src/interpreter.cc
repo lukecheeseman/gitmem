@@ -491,6 +491,27 @@ void Interpreter::print_thread_traces() {
   }
 }
 
+void Interpreter::build_and_print_revision_graph(const std::filesystem::path& output_path) {
+  // Build revision graph - collect const raw pointers
+  std::vector<const ThreadSyncState*> thread_state_ptrs;
+  for (const auto& thread : gctx.threads) {
+    thread_state_ptrs.push_back(thread.ctx.sync.get());
+  }
+
+  std::string dot = gctx.protocol->build_revision_graph_dot(thread_state_ptrs);
+  if (!dot.empty()) {
+    // Write to file
+    auto dot_file = output_path.parent_path() / "revision_graph.dot";
+    std::ofstream out(dot_file);
+    if (out) {
+      out << dot;
+      verbose << "Revision graph written to " << dot_file << std::endl;
+    } else {
+      verbose << "Failed to write revision graph to " << dot_file << std::endl;
+    }
+  }
+}
+
 graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Map each thread ID to its last graph node in the execution graph
   std::unordered_map<ThreadID, std::shared_ptr<graph::Node>> thread_tails;
@@ -567,24 +588,7 @@ int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind
 
   interp.print_thread_traces();
 
-  // Build and output revision graph - collect const raw pointers
-  std::vector<const ThreadSyncState*> thread_state_ptrs;
-  for (const auto& thread : interp.context().threads) {
-    thread_state_ptrs.push_back(thread.ctx.sync.get());
-  }
-
-  std::string dot = interp.context().protocol->build_revision_graph_dot(thread_state_ptrs);
-  if (!dot.empty()) {
-    // Write to file
-    auto dot_file = "revision_graph.dot";
-    std::ofstream out(dot_file);
-    if (out) {
-      out << dot;
-      verbose << "Revision graph written to " << dot_file << std::endl;
-    } else {
-      verbose << "Failed to write revision graph to " << dot_file << std::endl;
-    }
-  }
+  interp.build_and_print_revision_graph(output_path);
 
   // auto exec_graph = interp.build_execution_graph_from_traces();
   // graph::GraphvizPrinter gv(output_path);

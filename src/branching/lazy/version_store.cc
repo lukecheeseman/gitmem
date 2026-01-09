@@ -122,16 +122,9 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
 BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const {
   std::vector<std::shared_ptr<const Commit>> writers;
 
-  std::cout << "Get committed for " << var << std::endl;
-
   std::function<void(std::shared_ptr<const Commit>)> dfs;
   dfs = [&](std::shared_ptr<const Commit> c) {
     if (!c) return;
-    std::cout << c->id << " changes: {";
-    for (const auto& [k, v] : c->changes) {
-      std::cout << k << "->"  << v << ",";
-    }
-    std::cout << "}" << std::endl;
 
     // Check if c is an ancestor of any existing writer
     {
@@ -164,8 +157,6 @@ BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const 
   };
 
   dfs(head);
-
-  std::cout << "=====================================" << std::endl;
 
   if (writers.empty()) return std::monostate{};
   if (writers.size() == 1) {
