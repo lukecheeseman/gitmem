@@ -188,9 +188,9 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
       for (size_t tid = 0; tid < ctx->threads.size(); ++tid) {
         const auto& thread = ctx->threads[tid];
-        std::cout << "=== Thread " << tid << " ===" << std::endl;
-        std::cout << thread.trace;
-        std::cout << "====================================\n";
+        verbose << "=== Thread " << tid << " ===" << std::endl;
+        verbose << thread.trace;
+        verbose << "====================================\n";
       }
       // ctx->print_execution_graph(path);
     }

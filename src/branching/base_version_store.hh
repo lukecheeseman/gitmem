@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include <iostream>
+#include <sstream>
 #include "thread_id.hh"
 #include "sync_state.hh"
 #include "read_result.hh"
@@ -40,6 +41,12 @@ struct Timestamp {
   }
 };
 
+inline std::string to_string(const Timestamp& ts) {
+  std::ostringstream ss;
+  ss << ts;
+  return ss.str();
+}
+
 using ObjectNumber = uint64_t;
 
 struct Commit {
@@ -47,6 +54,8 @@ struct Commit {
   std::unordered_map<ObjectNumber, Value> changes;
   std::vector<std::shared_ptr<const Commit>> parents;
 };
+
+std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commit>>& leaves);
 
 bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_ptr<const Commit>& lca, std::unordered_map<std::shared_ptr<const Commit>, bool>& memo);
 

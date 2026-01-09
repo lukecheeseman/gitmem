@@ -1,6 +1,8 @@
 #include "base_version_store.hh"
 #include <iostream>
 #include <unordered_set>
+#include <sstream>
+#include <stack>
 #include "debug.hh"
 
 namespace gitmem {
@@ -172,6 +174,57 @@ bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_pt
 
   memo[commit] = false;
   return false;
+}
+
+std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commit>>& leaves) {
+  std::ostringstream dot;
+  dot << "digraph CommitGraph {\n";
+  dot << "  rankdir=BT;\n";              // bottom (leaves) → top (roots)
+  dot << "  node [shape=box];\n";
+
+  std::unordered_set<const Commit*> visited;
+  std::stack<std::shared_ptr<const Commit>> stack;
+
+  for (const auto& leaf : leaves)
+    if (leaf) stack.push(leaf);
+
+  while (!stack.empty()) {
+    auto commit = stack.top();
+    stack.pop();
+
+    if (!commit || !visited.insert(commit.get()).second)
+      continue;
+
+    const std::string cid = to_string(commit->id);
+
+    // Build label with commit ID and changes
+    std::ostringstream label;
+    label << cid;
+    if (!commit->changes.empty()) {
+      label << "\\n";
+      bool first = true;
+      for (const auto& [obj, val] : commit->changes) {
+        if (!first) label << "\\n";
+        first = false;
+        label << obj << "→" << val;
+      }
+    }
+
+    // Emit node with label
+    dot << "  \"" << cid << "\" [label=\"" << label.str() << "\"];\n";
+
+    // Emit edges to parents
+    for (const auto& parent : commit->parents) {
+      if (!parent) continue;
+
+      const std::string pid = to_string(parent->id);
+      dot << "  \"" << cid << "\" -> \"" << pid << "\";\n";
+      stack.push(parent);
+    }
+  }
+
+  dot << "}\n";
+  return dot.str();
 }
 
 } // branching

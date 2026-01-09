@@ -8,3 +8,4 @@ assert(x == 2);
 x = 4;
 assert(x == 4);
 join $t;
+assert(x == x);

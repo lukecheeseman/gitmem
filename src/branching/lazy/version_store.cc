@@ -108,7 +108,7 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
   head = merge_commit;
 
   // whenever we merge, we loose all the information about the last writer
-  last_writer.clear();
+  // last_writer.clear();
 
   return std::nullopt;
 }
@@ -120,18 +120,29 @@ std::optional<Conflict> LazyLocalVersionStore::merge_with_commit(const std::shar
 // }
 
 BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) const {
-
+  // Thought, if we merge two paths that conflict on a variable, but we never read it
+  // if (auto it = last_writer.find(number); it != last_writer.end()) {
+    // return it->second->changes.at(number);
+  // }
 
   std::vector<std::shared_ptr<const Commit>> writers;
   std::unordered_map<std::shared_ptr<const Commit>, bool> reach_memo;
 
+  // std::cout << "Get committed for " << number << std::endl;
+
   std::function<void(std::shared_ptr<const Commit>)> dfs;
   dfs = [&](std::shared_ptr<const Commit> c) {
     if (!c) return;
+    // std::cout << c->id << " changes: {";
+    // for (const auto& [k, v] : c->changes) {
+      // std::cout << k << "->"  << v << ",";
+    // }
+    // std::cout << "}" << std::endl;
 
     // If we've already found a writer that is an ancestor of c, skip
     for (auto it = writers.begin(); it != writers.end(); ) {
       if (can_reach(c, *it, reach_memo)) {
+        // std::cout << c->id << " can reach " << (*it)->id << std::endl;
         // existing writer is ancestor of this commit, remove it
         it = writers.erase(it);
       } else if (can_reach(*it, c, reach_memo)) {
@@ -153,8 +164,13 @@ BranchingReadResult LazyLocalVersionStore::get_committed(ObjectNumber number) co
 
   dfs(head);
 
+  // std::cout << "=====================================" << std::endl;
+
   if (writers.empty()) return std::monostate{};
-  if (writers.size() == 1) return writers[0]->changes.at(number);
+  if (writers.size() == 1) {
+    // last_writer[number] = writers[0];
+    return writers[0]->changes.at(number);
+  }
 
   // conflict
   auto a = writers[0]->id;

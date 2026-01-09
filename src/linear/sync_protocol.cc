@@ -19,6 +19,12 @@ std::ostream &LinearSyncProtocol::print(std::ostream &os) const {
   return os;
 }
 
+std::string LinearSyncProtocol::build_revision_graph_dot(
+    const std::vector<const ThreadSyncState*>& thread_states) const {
+  // Linear protocol doesn't have a commit graph structure
+  return "";
+}
+
 std::optional<LinearConflict>
 LinearSyncProtocol::push(LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.base_timestamp(),
@@ -84,9 +90,6 @@ void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
 
 std::optional<std::shared_ptr<ConflictBase>>
 LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
-  // TODO: i think we can drop the globalcontext but check after branching is
-  // added
-
   // push parent to global history
   auto& store = get_store(parent);
   if (auto conflict = push(store))

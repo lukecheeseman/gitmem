@@ -40,6 +40,8 @@ public:
 
   std::ostream &print(std::ostream &os) const override;
 
+  std::string build_revision_graph_dot(const std::vector<const ThreadSyncState*>& thread_states) const override;
+
   std::unique_ptr<LockSyncState> make_lock_state() const override {
     return std::make_unique<LockState>();
   }

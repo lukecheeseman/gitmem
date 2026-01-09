@@ -133,6 +133,21 @@ BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
   return std::nullopt;
 }
 
+std::string BranchingSyncProtocolBase::build_revision_graph_dot(
+    const std::vector<const ThreadSyncState*>& thread_states) const {
+
+  std::vector<std::shared_ptr<const Commit>> heads;
+
+  for (const ThreadSyncState* state_ptr : thread_states) {
+    const auto* local_store = dynamic_cast<const LocalVersionStore*>(state_ptr);
+    if (local_store && local_store->get_head()) {
+      heads.push_back(local_store->get_head());
+    }
+  }
+
+  return build_commit_graph_dot(heads);
+}
+
 } // end branching
 
 } // end gitmem

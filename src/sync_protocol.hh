@@ -44,12 +44,15 @@ public:
   virtual std::optional<std::shared_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock) = 0;
 
+  virtual std::string build_revision_graph_dot(const std::vector<const ThreadSyncState*>& thread_states) const = 0;
 
   virtual std::ostream &print(std::ostream &os) const = 0;
   friend std::ostream &operator<<(std::ostream &os,
                                   const SyncProtocol &protocol) {
     return protocol.print(os);
   }
+
+
 };
 
 } // namespace gitmem

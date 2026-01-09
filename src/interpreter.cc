@@ -1,6 +1,7 @@
 #include <regex>
 #include <trieste/trieste.h>
 #include <variant>
+#include <fstream>
 
 #include "debug.hh"
 #include "interpreter.hh"
@@ -39,15 +40,6 @@ static bool is_syncing(Thread &thread) {
     ((thread.pc >= thread.block->size()) || is_syncing(thread.block->at(thread.pc)));
 }
 
-// Helper to combine multiple lambdas for std::visit
-template<class... Ts>
-struct overloaded : Ts... {
-    using Ts::operator()...;
-};
-
-// deduction guide
-template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
@@ -70,20 +62,20 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     auto result = gctx.protocol->read(ctx, var);
 
     return std::visit(overloaded{
-    [&](std::monostate) -> std::variant<size_t, TerminationStatus> {
-        // invalid: reading a variable that hasn't been written
-        return termination::UnassignedRead(var);
-    },
-    [&](Value value) -> std::variant<size_t, TerminationStatus> {
-        // normal read
-        thread.trace.on_read(var, value);
-        return value;
-    },
-    [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
-        verbose << (*conflict) << std::endl;
-        return termination::DataRace(conflict);
-    }
-}, result);
+      [&](std::monostate) -> std::variant<size_t, TerminationStatus> {
+          // invalid: reading a variable that hasn't been written
+          return termination::UnassignedRead(var);
+      },
+      [&](Value value) -> std::variant<size_t, TerminationStatus> {
+          // normal read
+          thread.trace.on_read(var, value);
+          return value;
+      },
+      [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
+          verbose << (*conflict) << std::endl;
+          return termination::DataRace(conflict);
+      }
+    }, result);
   } else if (e == lang::Const) {
     return size_t(std::stoi(std::string(e->location().view())));
   } else if (e == lang::Add) {
@@ -485,15 +477,17 @@ int Interpreter::run() {
     }
   }
 
+  verbose << *gctx.protocol << std::endl;
+
   return exception_detected ? 1 : 0;
 }
 
 void Interpreter::print_thread_traces() {
   for (size_t tid = 0; tid < gctx.threads.size(); ++tid) {
     const auto& thread = gctx.threads[tid];
-    std::cout << "=== Thread " << tid << " ===" << std::endl;
-    std::cout << thread.trace;
-    std::cout << "====================================\n";
+    verbose << "=== Thread " << tid << " ===" << std::endl;
+    verbose << thread.trace;
+    verbose << "====================================\n";
   }
 }
 
@@ -573,8 +567,29 @@ int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind
 
   interp.print_thread_traces();
 
-  // auto exec_graph = interp.build_execution_graph_from_traces();
+  // Build and output revision graph - collect const raw pointers
+  std::vector<const ThreadSyncState*> thread_state_ptrs;
+  for (const auto& thread : interp.context().threads) {
+    thread_state_ptrs.push_back(thread.ctx.sync.get());
+  }
 
+  std::string dot = interp.context().protocol->build_revision_graph_dot(thread_state_ptrs);
+  if (!dot.empty()) {
+    verbose << "=== Revision Graph ===" << std::endl;
+    verbose << dot << std::endl;
+
+    // Write to file
+    auto dot_file = "revision_graph.dot";
+    std::ofstream out(dot_file);
+    if (out) {
+      out << dot;
+      verbose << "Revision graph written to " << dot_file << std::endl;
+    } else {
+      verbose << "Failed to write revision graph to " << dot_file << std::endl;
+    }
+  }
+
+  // auto exec_graph = interp.build_execution_graph_from_traces();
   // graph::GraphvizPrinter gv(output_path);
   // gv.visit(node.get());
 

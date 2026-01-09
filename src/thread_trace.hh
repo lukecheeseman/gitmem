@@ -178,7 +178,6 @@ private:
   }
 };
 
-
 // --- operator<< for ThreadTrace ---
 inline std::ostream& operator<<(std::ostream& os, const ThreadTrace& tt) {
   os << "ThreadTrace[" << tt.trace.size() << " events]:\n";
