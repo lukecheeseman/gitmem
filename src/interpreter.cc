@@ -527,6 +527,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Track join nodes that need fixing up after all threads are processed
   std::vector<std::shared_ptr<graph::Join>> joins_to_fix;
 
+  // Map from trace events to graph nodes
+  std::unordered_map<std::shared_ptr<Event>, std::shared_ptr<graph::Node>> event_to_node;
+
   // Create Start nodes for all threads
   std::vector<std::shared_ptr<graph::Start>> thread_starts;
   thread_starts.reserve(gctx.threads.size());
@@ -567,11 +570,13 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
         [&](const EndEvent&) {
           auto node = std::make_shared<graph::End>();
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         },
         [&](const WriteEvent& arg) {
           auto node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
           last_write_per_var[arg.var] = node;
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         },
         [&](const ReadEvent& arg) {
           // Link to the write that produced this value
@@ -580,34 +585,64 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
                         : nullptr;
           auto node = std::make_shared<graph::Read>(arg.var, arg.value, tid, source);
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
+
+          // Mark conflict if present (full conflict details would require more work)
+          if (arg.maybe_conflict) {
+            // For now, just mark the node red - proper conflict edges would need
+            // extracting source nodes from ConflictBase
+            // TODO: Extract and visualize conflict sources
+          }
         },
         [&](const SpawnEvent& arg) {
           // Link to the child thread's start node
           auto node = std::make_shared<graph::Spawn>(arg.child_tid, g.threads[arg.child_tid]);
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         },
         [&](const JoinEvent& arg) {
-          // Create join node with nullptr joinee for now - will fix up later
-          auto node = std::make_shared<graph::Join>(arg.joinee_tid, nullptr);
+          // Create join node - will fix up joinee pointer later
+          std::optional<graph::Conflict> conflict;
+          if (arg.maybe_conflict) {
+            // Just mark as conflicting - version IDs don't map directly to nodes
+            conflict = graph::Conflict("");  // empty var name for joins
+          }
+          auto node = std::make_shared<graph::Join>(arg.joinee_tid, nullptr, conflict);
           joins_to_fix.push_back(node);
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         },
         [&](const LockEvent& arg) {
-          // Link to the last unlock of this lock
-          auto ordered_after = last_unlock_per_lock.contains(arg.lock_name)
-                               ? last_unlock_per_lock[arg.lock_name]
-                               : nullptr;
-          auto node = std::make_shared<graph::Lock>(arg.lock_name, ordered_after);
+          // Link to the last unlock event using the event-to-node mapping
+          std::shared_ptr<graph::Node> ordered_after = nullptr;
+          if (arg.last_unlock_event && event_to_node.contains(arg.last_unlock_event)) {
+            ordered_after = event_to_node[arg.last_unlock_event];
+          }
+
+          std::optional<graph::Conflict> conflict;
+          if (arg.maybe_conflict) {
+            // Mark as conflicting with the lock name
+            conflict = graph::Conflict(arg.lock_name);
+          }
+          auto node = std::make_shared<graph::Lock>(arg.lock_name, ordered_after, conflict);
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         },
         [&](const UnlockEvent& arg) {
           auto node = std::make_shared<graph::Unlock>(arg.lock_name);
           last_unlock_per_lock[arg.lock_name] = node;
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
+
+          // Mark conflict if present
+          if (arg.maybe_conflict) {
+            // TODO: Visualize unlock conflicts
+          }
         },
         [&](const AssertEvent& arg) {
           auto node = std::make_shared<graph::AssertionFailure>(arg.condition);
           link_in_program_order(tid, node);
+          event_to_node[event] = node;
         }
       }, event->data);
     }

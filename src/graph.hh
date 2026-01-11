@@ -29,7 +29,14 @@ struct Pending;
 
 struct Conflict {
   std::string var;
+  // Optional: if we can determine the conflicting nodes, store them here
+  // Otherwise these can be nullptr and we just mark the node red
   std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>> sources;
+
+  // Constructor that allows creating conflicts without sources
+  Conflict(std::string v) : var(std::move(v)), sources{nullptr, nullptr} {}
+  Conflict(std::string v, std::pair<std::shared_ptr<Node>, std::shared_ptr<Node>> s)
+      : var(std::move(v)), sources(std::move(s)) {}
 };
 
 struct Visitor {

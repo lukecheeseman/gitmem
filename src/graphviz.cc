@@ -60,9 +60,15 @@ void GraphvizPrinter::emitShape(const Node *n, const std::string &shape) {
 void GraphvizPrinter::emitConflict(const Node *n, const Conflict &conflict) {
   emitFillColor(n, "red");
   // emitShape(n, "doubleoctagon");
+
+  // Only draw conflict edges if we have actual source nodes
   auto [s1, s2] = conflict.sources;
-  emitConflictEdge(n, s1.get());
-  emitConflictEdge(n, s2.get());
+  if (s1) {
+    emitConflictEdge(n, s1.get());
+  }
+  if (s2) {
+    emitConflictEdge(n, s2.get());
+  }
 }
 
 GraphvizPrinter::GraphvizPrinter(std::string filename) noexcept {
