@@ -30,6 +30,8 @@ class Interpreter {
 private:
   GlobalContext gctx;
 
+  graph::ExecutionGraph build_execution_graph_from_traces();
+
 public:
   Interpreter(GlobalContext gctx): gctx(std::move(gctx)) {}
 
@@ -46,10 +48,8 @@ public:
 
   void print_thread_traces();
 
-  void build_and_print_revision_graph(const std::filesystem::path& output_path);
-
-  graph::ExecutionGraph build_execution_graph_from_traces();
-
+  void print_revision_graph(const std::filesystem::path& output_path);
+  void print_execution_graph(const std::filesystem::path& output_path);
 };
 
 // Entry function

@@ -72,7 +72,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
           return value;
       },
       [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
-          verbose << (*conflict) << std::endl;
+          verbose::out << (*conflict) << std::endl;
           return termination::DataRace(conflict);
       }
     }, result);
@@ -130,7 +130,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
   auto s = stmt / lang::Stmt;
   if (s == lang::Nop) {
 
-    verbose << "Nop" << std::endl;
+    verbose::out << "Nop" << std::endl;
 
   } else if (s == lang::Jump) {
 
@@ -164,7 +164,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       if (lhs == lang::Reg) {
 
         // Local variables can be re-assigned whenever
-        verbose << "Set register '" << lhs->location().view() << "' to " << *val
+        verbose::out << "Set register '" << lhs->location().view() << "' to " << *val
                 << std::endl;
         ctx.locals[var] = *val;
 
@@ -178,7 +178,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
         // auto &global = ctx.globals[var];
         // global.val = *val;
         // global.commit = gctx.uuid++;
-        // verbose <<  "Set global '" << lhs->location().view() << "' to " <<
+        // verbose::out <<  "Set global '" << lhs->location().view() << "' to " <<
         // *val <<  " with id " << *(global.commit) << std::endl;
 
         // gctx.commit_map[*(global.commit)] = node;
@@ -207,7 +207,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto result = gctx.cache[expr];
     // Check if the thread ID is valid
     if (result >= gctx.threads.size()) {
-        verbose << "Join: invalid thread ID " << result
+        verbose::out << "Join: invalid thread ID " << result
                 << ". gctx.threads.size()=" << gctx.threads.size() << std::endl;
         return termination::UnassignedRead(std::to_string(result));
     }
@@ -216,7 +216,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     if (joinee.terminated &&
         std::holds_alternative<termination::Completed>(*joinee.terminated)) {
       if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx)) {
-        verbose << (**conflict) << std::endl;
+        verbose::out << (**conflict) << std::endl;
         thread.trace.on_join(result, *conflict);
         return termination::DataRace(*conflict);
       } else {
@@ -224,7 +224,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       }
 
     } else {
-      verbose << "Waiting on thread " << result << std::endl;
+      verbose::out << "Waiting on thread " << result << std::endl;
       return 0;
     }
   } else if (s == lang::Lock) {
@@ -236,7 +236,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     Lock& lock = gctx.get_lock(var);
     if (lock.owner) {
-      verbose << "Waiting for lock " << var << " owned by "
+      verbose::out << "Waiting for lock " << var << " owned by "
               << lock.owner.value() << std::endl;
       return 0;
     }
@@ -244,13 +244,13 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     lock.owner = thread.tid;
 
     if (auto conflict = gctx.protocol->on_lock(ctx, lock)) {
-      verbose << (**conflict) << std::endl;
+      verbose::out << (**conflict) << std::endl;
       thread.trace.on_lock(var, lock.last_unlock_event, *conflict);
       return termination::DataRace(*conflict);
     }
 
     thread.trace.on_lock(var, lock.last_unlock_event);
-    verbose << "Locked " << var << std::endl;
+    verbose::out << "Locked " << var << std::endl;
 
   } else if (s == lang::Unlock) {
     // We can only unlock locks we previously locked. We commit any
@@ -268,7 +268,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     }
 
     if (auto conflict = gctx.protocol->on_unlock(ctx, lock)) {
-      verbose << (**conflict) << std::endl;
+      verbose::out << (**conflict) << std::endl;
       thread.trace.on_unlock(var, *conflict);
       return termination::DataRace(*conflict);
     }
@@ -278,7 +278,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     lock.last_unlock_event = thread.trace.on_unlock(var);
 
-    verbose << "Unlocked " << var << std::endl;
+    verbose::out << "Unlocked " << var << std::endl;
 
   } else if (s == lang::Assert) {
 
@@ -286,10 +286,10 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto result_or_term = evaluate_expression(expr, thread);
     if (size_t *result = std::get_if<size_t>(&result_or_term)) {
       if (*result) {
-        verbose << "Assertion passed: " << expr->location().view() << std::endl;
+        verbose::out << "Assertion passed: " << expr->location().view() << std::endl;
         thread.trace.on_assert_pass(std::string(expr->location().view()));
       } else {
-        verbose << "Assertion failed: " << expr->location().view() << std::endl;
+        verbose::out << "Assertion failed: " << expr->location().view() << std::endl;
         thread.trace.on_assert_fail(std::string(expr->location().view()));
         return termination::AssertionFailure(std::string(expr->location().view()));
       }
@@ -356,7 +356,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
 
   // Otherwise, we truly reached the end this iteration
   if (auto conflict = gctx.protocol->on_end(ctx)) {
-    verbose << (**conflict) << std::endl;
+    verbose::out << (**conflict) << std::endl;
     TerminationStatus term = termination::DataRace(*conflict);
     thread.terminated = term;
     return term;
@@ -385,7 +385,7 @@ Interpreter::progress_thread(Thread& thread) {
     any_progress = true;
     auto& new_thread = gctx.threads[i];
     if (!is_syncing(new_thread)) {
-      verbose << "==== Thread " << i << " (spawn) ====" << std::endl;
+      verbose::out << "==== Thread " << i << " (spawn) ====" << std::endl;
       progress_thread(new_thread);
     }
   }
@@ -400,11 +400,11 @@ Interpreter::progress_thread(Thread& thread) {
  */
 std::variant<ProgressStatus, TerminationStatus>
 Interpreter::run_threads_to_sync() {
-  verbose << "-----------------------" << std::endl;
+  verbose::out << "-----------------------" << std::endl;
   bool all_completed = true;
   ProgressStatus any_progress = ProgressStatus::no_progress;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
-    verbose << "==== t" << i << " ====" << std::endl;
+    verbose::out << "==== t" << i << " ====" << std::endl;
     auto& thread = gctx.threads[i];
     if (!thread.terminated) {
       auto prog_or_term = run_single_thread_to_sync(thread);
@@ -447,24 +447,24 @@ int Interpreter::run() {
     prog_or_term = run_threads_to_sync();
   } while (!is_finished(prog_or_term));
 
-  verbose << "----------- execution complete -----------" << std::endl;
+  verbose::out << "----------- execution complete -----------" << std::endl;
 
   bool exception_detected = false;
   for (size_t i = 0; i < gctx.threads.size(); ++i) {
     auto &thread = gctx.threads[i];
 
     if (thread.terminated) {
-    verbose << "Thread " << i << ": ";
+    verbose::out << "Thread " << i << ": ";
 
     std::visit(
       overloaded{
         [&](const termination::Completed &t) {
-          verbose << t << std::endl;
+          verbose::out << t << std::endl;
         },
 
         [&](const auto &t) {
           // Any non-completed termination is exceptional
-          verbose << t << std::endl;
+          verbose::out << t << std::endl;
           exception_detected = true;
         }
       },
@@ -473,11 +473,13 @@ int Interpreter::run() {
     } else {
       exception_detected = true;
       thread.trace.on_end();
-      verbose << "Thread " << i << " is stuck" << std::endl;
+      verbose::out << "Thread " << i << " is stuck" << std::endl;
     }
   }
 
-  verbose << *gctx.protocol << std::endl;
+  verbose::out << "------------------------------------------" << std::endl;
+
+  print_thread_traces();
 
   return exception_detected ? 1 : 0;
 }
@@ -485,13 +487,13 @@ int Interpreter::run() {
 void Interpreter::print_thread_traces() {
   for (size_t tid = 0; tid < gctx.threads.size(); ++tid) {
     const auto& thread = gctx.threads[tid];
-    verbose << "=== Thread " << tid << " ===" << std::endl;
-    verbose << thread.trace;
-    verbose << "====================================\n";
+    verbose::out << "=== Thread " << tid << " ===" << std::endl;
+    verbose::out << thread.trace;
+    verbose::out << "====================================\n";
   }
 }
 
-void Interpreter::build_and_print_revision_graph(const std::filesystem::path& output_path) {
+void Interpreter::print_revision_graph(const std::filesystem::path& output_path) {
   // Build revision graph - collect const raw pointers
   std::vector<const ThreadSyncState*> thread_state_ptrs;
   for (const auto& thread : gctx.threads) {
@@ -501,98 +503,145 @@ void Interpreter::build_and_print_revision_graph(const std::filesystem::path& ou
   std::string dot = gctx.protocol->build_revision_graph_dot(thread_state_ptrs);
   if (!dot.empty()) {
     // Write to file
-    auto dot_file = output_path.parent_path() / "revision_graph.dot";
+    auto dot_file = output_path.parent_path() / (output_path.stem().string() + "_revision_graph.dot");
     std::ofstream out(dot_file);
     if (out) {
       out << dot;
-      verbose << "Revision graph written to " << dot_file << std::endl;
+      verbose::out << "Revision graph written to " << dot_file << std::endl;
     } else {
-      verbose << "Failed to write revision graph to " << dot_file << std::endl;
+      verbose::out << "Failed to write revision graph to " << dot_file << std::endl;
     }
   }
 }
 
 graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
-  // Map each thread ID to its last graph node in the execution graph
+  // Map each thread ID to its last graph node in the execution graph (per-thread program order)
   std::unordered_map<ThreadID, std::shared_ptr<graph::Node>> thread_tails;
 
-  // create start nodes for all threads
-  graph::ExecutionGraph g;
+  // Track the last unlock event for each lock (for lock->unlock edges)
+  std::unordered_map<std::string, std::shared_ptr<graph::Node>> last_unlock_per_lock;
+
+  // Track write events per variable (for read->write edges)
+  std::unordered_map<std::string, std::shared_ptr<graph::Node>> last_write_per_var;
+
+  // Track join nodes that need fixing up after all threads are processed
+  std::vector<std::shared_ptr<graph::Join>> joins_to_fix;
+
+  // Create Start nodes for all threads
+  std::vector<std::shared_ptr<graph::Start>> thread_starts;
+  thread_starts.reserve(gctx.threads.size());
+
   for (ThreadID tid = 0; tid < gctx.threads.size(); ++tid) {
     auto node = std::make_shared<graph::Start>(tid);
-    g.threads.push_back(node);
+    thread_starts.push_back(node);
     thread_tails[tid] = node;
   }
 
-  assert(false && "This is currently not building the current graph");
+  // The entry point is thread 0's start
+  graph::ExecutionGraph g(thread_starts[0]);
+  g.threads = std::move(thread_starts);
 
-  // Helper lambda to convert an Event to a graph Node
-  auto event_to_node = [&](ThreadID tid, const std::shared_ptr<Event>& e) -> std::shared_ptr<graph::Node> {
-    return std::visit([&](auto&& arg) -> std::shared_ptr<graph::Node> {
-      using T = std::decay_t<decltype(arg)>;
-      std::shared_ptr<graph::Node> node;
-
-      if constexpr (std::is_same_v<T, StartEvent>) {
-        node = std::make_shared<graph::Start>(tid);
-      } else if constexpr (std::is_same_v<T, EndEvent>) {
-        node = std::make_shared<graph::End>();
-      } else if constexpr (std::is_same_v<T, WriteEvent>) {
-        node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
-      } else if constexpr (std::is_same_v<T, ReadEvent>) {
-        // We could track dependencies from previous writes if desired
-        node = std::make_shared<graph::Read>(arg.var, arg.value, tid, thread_tails[tid]);
-      } else if constexpr (std::is_same_v<T, SpawnEvent>) {
-        ThreadID child_tid = arg.child_tid;
-        node = std::make_shared<graph::Spawn>(child_tid, g.threads[child_tid]);
-      } else if constexpr (std::is_same_v<T, JoinEvent>) {
-        node = std::make_shared<graph::Join>(arg.joinee_tid, thread_tails[arg.joinee_tid]);
-      } else if constexpr (std::is_same_v<T, LockEvent>) {
-        node = std::make_shared<graph::Lock>(arg.lock_name, thread_tails[tid]);
-      } else if constexpr (std::is_same_v<T, UnlockEvent>) {
-        node = std::make_shared<graph::Unlock>(arg.lock_name);
-      } else if constexpr (std::is_same_v<T, AssertEvent>) {
-        node = std::make_shared<graph::AssertionFailure>(arg.condition);
-      } else {
-        throw std::logic_error("Unknown Event type in trace");
-      }
-
-      // Link the previous tail of this thread to this new node
-      if (thread_tails[tid])
-        thread_tails[tid]->next = node;
-
-      thread_tails[tid] = node;
-      return node;
-    }, e->data);
+  // Helper to link a node in program order for its thread
+  auto link_in_program_order = [&](ThreadID tid, std::shared_ptr<graph::Node> node) {
+    if (thread_tails[tid]) {
+      thread_tails[tid]->next = node;
+    }
+    thread_tails[tid] = node;
   };
 
-  // Iterate over threads in thread ID order
+  // Process events from all threads
   for (ThreadID tid = 0; tid < gctx.threads.size(); ++tid) {
     auto& thread = gctx.threads[tid];
 
-    // skip the first event because it is always start and we created that to begin with
-    for (auto it = std::next(thread.trace.begin()); it != thread.trace.end(); ++it) {
-        event_to_node(tid, *it);
+    // Process all events from the trace
+    for (const auto& event : thread.trace) {
+      if (!event) {
+        // Safety check: skip null events (shouldn't happen)
+        continue;
+      }
+
+      std::visit(overloaded{
+        [&](const StartEvent&) {
+          // Skip: Start nodes already created above
+        },
+        [&](const EndEvent&) {
+          auto node = std::make_shared<graph::End>();
+          link_in_program_order(tid, node);
+        },
+        [&](const WriteEvent& arg) {
+          auto node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
+          last_write_per_var[arg.var] = node;
+          link_in_program_order(tid, node);
+        },
+        [&](const ReadEvent& arg) {
+          // Link to the write that produced this value
+          auto source = last_write_per_var.contains(arg.var)
+                        ? last_write_per_var[arg.var]
+                        : nullptr;
+          auto node = std::make_shared<graph::Read>(arg.var, arg.value, tid, source);
+          link_in_program_order(tid, node);
+        },
+        [&](const SpawnEvent& arg) {
+          // Link to the child thread's start node
+          auto node = std::make_shared<graph::Spawn>(arg.child_tid, g.threads[arg.child_tid]);
+          link_in_program_order(tid, node);
+        },
+        [&](const JoinEvent& arg) {
+          // Create join node with nullptr joinee for now - will fix up later
+          auto node = std::make_shared<graph::Join>(arg.joinee_tid, nullptr);
+          joins_to_fix.push_back(node);
+          link_in_program_order(tid, node);
+        },
+        [&](const LockEvent& arg) {
+          // Link to the last unlock of this lock
+          auto ordered_after = last_unlock_per_lock.contains(arg.lock_name)
+                               ? last_unlock_per_lock[arg.lock_name]
+                               : nullptr;
+          auto node = std::make_shared<graph::Lock>(arg.lock_name, ordered_after);
+          link_in_program_order(tid, node);
+        },
+        [&](const UnlockEvent& arg) {
+          auto node = std::make_shared<graph::Unlock>(arg.lock_name);
+          last_unlock_per_lock[arg.lock_name] = node;
+          link_in_program_order(tid, node);
+        },
+        [&](const AssertEvent& arg) {
+          auto node = std::make_shared<graph::AssertionFailure>(arg.condition);
+          link_in_program_order(tid, node);
+        }
+      }, event->data);
     }
-    if (!thread.terminated) {
+
+    // Add pending node if thread hasn't terminated and PC is valid
+    if (!thread.terminated && thread.pc < thread.block->size()) {
       trieste::Node stmt = thread.block->at(thread.pc);
-      thread_tails[tid]->next = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
+      auto pending = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
+      link_in_program_order(tid, pending);
     }
+  }
+
+  // Fix up join nodes to point to the actual end of the joined threads
+  for (auto& join_node : joins_to_fix) {
+    ThreadID joinee_tid = join_node->tid;
+    // thread_tails[joinee_tid] now points to the end (or pending) of that thread
+    const_cast<std::shared_ptr<const graph::Node>&>(join_node->joinee) = thread_tails[joinee_tid];
   }
 
   return g;
 }
 
+void Interpreter::print_execution_graph(const std::filesystem::path& output_path) {
+  auto exec_graph = build_execution_graph_from_traces();
+  graph::GraphvizPrinter gv(output_path);
+  gv.visit(exec_graph.entry.get());
+}
+
+
 int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
   Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
   int result = interp.run();
 
-  interp.print_thread_traces();
-
-  interp.build_and_print_revision_graph(output_path);
-
-  // auto exec_graph = interp.build_execution_graph_from_traces();
-  // graph::GraphvizPrinter gv(output_path);
-  // gv.visit(node.get());
+  interp.print_revision_graph(output_path);
 
   return result;
 }

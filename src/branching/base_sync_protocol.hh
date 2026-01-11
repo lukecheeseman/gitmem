@@ -12,6 +12,9 @@ namespace branching {
 class BranchingSyncProtocolBase : public SyncProtocol {
 protected:
   GlobalVersionStore _global_store;
+  bool verbose;
+
+  explicit BranchingSyncProtocolBase(bool verbose) : verbose(verbose) {}
 
 public:
   ~BranchingSyncProtocolBase() override;
@@ -45,6 +48,36 @@ public:
   std::unique_ptr<LockSyncState> make_lock_state() const override {
     return std::make_unique<LockState>();
   }
+};
+
+// Builder for creating branching sync protocols
+class BranchingSyncProtocolBuilder {
+private:
+  SyncKind kind = SyncKind::BranchingLazy;
+  bool verbose = false;
+
+public:
+  BranchingSyncProtocolBuilder& with_kind(SyncKind k) {
+    kind = k;
+    return *this;
+  }
+
+  BranchingSyncProtocolBuilder& eager() {
+    kind = SyncKind::BranchingEager;
+    return *this;
+  }
+
+  BranchingSyncProtocolBuilder& lazy() {
+    kind = SyncKind::BranchingLazy;
+    return *this;
+  }
+
+  BranchingSyncProtocolBuilder& with_verbose_commits(bool v = true) {
+    verbose = v;
+    return *this;
+  }
+
+  std::unique_ptr<SyncProtocol> build() const;
 };
 
 } // end branching

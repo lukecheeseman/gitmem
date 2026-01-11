@@ -142,9 +142,10 @@ struct Pending : Node {
 };
 
 struct ExecutionGraph {
+  std::shared_ptr<const Node> entry;
   std::vector<std::shared_ptr<graph::Start>> threads;
 
-  ExecutionGraph() = default;
+  ExecutionGraph(std::shared_ptr<const Node> entry) : entry(entry) {}
 
   ExecutionGraph(const ExecutionGraph&) = delete;
   ExecutionGraph& operator=(const ExecutionGraph&) = delete;

@@ -71,7 +71,7 @@ GraphvizPrinter::GraphvizPrinter(std::string filename) noexcept {
 
 void GraphvizPrinter::visit(const Node *n) {
   file << "digraph G {" << std::endl;
-  n->accept(this);
+  if (n) n->accept(this);
   file << "}" << std::endl;
 }
 

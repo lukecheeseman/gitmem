@@ -60,8 +60,8 @@ void LocalVersionStore::stage(std::string obj, Value value) {
 }
 
 void LocalVersionStore::commit_staging() {
-  // No-op commit does nothing
-  if (staging.empty()) {
+  // No-op commit does nothing unless verbose mode
+  if (staging.empty() && !verbose) {
     return;
   }
 
@@ -130,7 +130,7 @@ bool LocalVersionStore::operator==(const LocalVersionStore& other) const {
 }
 
 std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
-  os << "GlobalVersionStore()" << std::endl;
+  os << "GlobalVersionStore()";
   return os;
 }
 

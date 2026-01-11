@@ -81,10 +81,12 @@ protected:
 
   std::unordered_map<std::string, std::shared_ptr<const Commit>> last_writer; // cached
 
+  bool verbose;
+
 public:
   ~LocalVersionStore() = default;
 
-  LocalVersionStore(ThreadID tid): base_timestamp(tid, 0) {}
+  LocalVersionStore(ThreadID tid, bool verbose = false): base_timestamp(tid, 0), verbose(verbose) {}
 
   void stage(std::string obj, Value value);
   void commit_staging();

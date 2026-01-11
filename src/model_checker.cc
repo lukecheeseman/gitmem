@@ -70,7 +70,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
   const auto root = std::make_shared<TraceNode>(0);
   auto cursor = root;
   auto current_trace = std::vector<size_t>{0}; // Start with the main thread
-  verbose << "==== Thread " << cursor->tid_ << " ====" << std::endl;
+  verbose::out << "==== Thread " << cursor->tid_ << " ====" << std::endl;
 
   Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
 
@@ -82,7 +82,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
       // We have a child that is not complete, we can extend that trace
       cursor = cursor->children.back();
       current_trace.push_back(cursor->tid_);
-      verbose << "==== Thread " << cursor->tid_
+      verbose::out << "==== Thread " << cursor->tid_
               << " (replay) ====" << std::endl;
       interp.progress_thread(gctx.threads[cursor->tid_]);
     }
@@ -96,7 +96,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
       auto& thread = gctx.threads[i];
       if (!thread.terminated) {
         // Run the thread to the next sync point
-        verbose << "==== Thread " << i << " ====" << std::endl;
+        verbose::out << "==== Thread " << i << " ====" << std::endl;
         auto prog_or_term = interp.progress_thread(thread);
         if (is_terminated(prog_or_term)) {
           // Thread terminated, we can extend the trace
@@ -105,7 +105,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
           current_trace.push_back(i);
           if (!std::holds_alternative<termination::Completed>(std::get<TerminationStatus>(prog_or_term))) {
             // Thread terminated with an error, we can stop here
-            verbose << "Thread " << i << " terminated with an error"
+            verbose::out << "Thread " << i << " terminated with an error"
                     << std::endl;
             cursor->complete = true;
           }
@@ -160,22 +160,22 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
     if (cursor->complete && !root->complete) {
       // Reset the cursor to the root and start a new trace
-      verbose << std::endl << "Restarting trace..." << std::endl;
+      verbose::out << std::endl << "Restarting trace..." << std::endl;
       interp = Interpreter(GlobalContext(ast, make_protocol(sync_kind)));
       GlobalContext& gctx = interp.context();
 
       cursor = root;
       current_trace.clear();
       current_trace.push_back(0); // Start with the main thread again
-      verbose << "==== Thread " << cursor->tid_
+      verbose::out << "==== Thread " << cursor->tid_
               << " (replay) ====" << std::endl;
       interp.progress_thread(gctx.threads[cursor->tid_]);
     }
   }
 
-  verbose << "Found a total of " << final_traces.size()
+  verbose::out << "Found a total of " << final_traces.size()
           << " trace(s) with distinct final states:" << std::endl;
-  print_traces(verbose, final_traces);
+  print_traces(verbose::out, final_traces);
 
   size_t idx = 0;
   if (!failing_traces.empty()) {
@@ -188,9 +188,9 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
 
       for (size_t tid = 0; tid < ctx->threads.size(); ++tid) {
         const auto& thread = ctx->threads[tid];
-        verbose << "=== Thread " << tid << " ===" << std::endl;
-        verbose << thread.trace;
-        verbose << "====================================\n";
+        verbose::out << "=== Thread " << tid << " ===" << std::endl;
+        verbose::out << thread.trace;
+        verbose::out << "====================================\n";
       }
       // ctx->print_execution_graph(path);
     }

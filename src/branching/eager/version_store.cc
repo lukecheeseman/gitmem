@@ -92,7 +92,7 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
 
   // Find lowest common ancestor of the two heads
   std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, commit);
-  verbose << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
+  verbose::out << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
 
   // Collect all writes after LCA for each branch
   std::unordered_map<std::string, std::shared_ptr<const Commit>> branch_a, branch_b;

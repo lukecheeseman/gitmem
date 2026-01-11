@@ -1,5 +1,7 @@
 #include "base_sync_protocol.hh"
 #include "overloaded.hh"
+#include "branching/eager/sync_protocol.hh"
+#include "branching/lazy/sync_protocol.hh"
 
 namespace gitmem {
 
@@ -20,7 +22,7 @@ LockState& get_store(Lock& ctx) {
 BranchingSyncProtocolBase::~BranchingSyncProtocolBase() = default;
 
 std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
-  os << _global_store << std::endl;
+  os << _global_store;
   return os;
 }
 
@@ -105,9 +107,9 @@ BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock) {
         conflict->obj,
         std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
     }
-  }
 
-  lock_state.commit = store.get_head();
+    lock_state.commit = store.get_head();
+  }
 
   return std::nullopt;
 }
@@ -120,11 +122,8 @@ BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
   LockState& lock_state = get_store(lock);
   std::shared_ptr<const Commit> lock_commit = lock_state.commit;
 
-  // we don't need to check for conflicts
-  if (lock_commit != nullptr) {
-    std::optional<Conflict> conflict = store.merge_with_commit(lock_commit);
-    assert (!conflict);
-  }
+  // we know that the last committer was this thread, so no need to merge
+  // this sort of mixes protocol logic and lock state, i am unsure if this is ideal
 
   lock_state.commit = store.get_head();
 
@@ -144,6 +143,19 @@ std::string BranchingSyncProtocolBase::build_revision_graph_dot(
   }
 
   return build_commit_graph_dot(heads);
+}
+
+std::unique_ptr<SyncProtocol> BranchingSyncProtocolBuilder::build() const {
+  switch (kind) {
+    case SyncKind::BranchingEager:
+      return std::make_unique<BranchingEagerSyncProtocol>(verbose);
+
+    case SyncKind::BranchingLazy:
+      return std::make_unique<BranchingLazySyncProtocol>(verbose);
+
+    default:
+      throw std::runtime_error("Invalid sync kind for branching protocol");
+  }
 }
 
 } // end branching

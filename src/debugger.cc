@@ -141,9 +141,9 @@ void maybe_print_graph(Interpreter& interp,
                        bool print_graphs,
                        const std::filesystem::path &output_file) {
     if (print_graphs) {
-        // gctx.print_execution_graph(output_file);
-        interp.build_and_print_revision_graph(output_file);
-        verbose << "Execution graph written to " << output_file << std::endl;
+      interp.print_revision_graph(output_file);
+      interp.print_execution_graph(output_file);
+      verbose::out << "Execution graph written to " << output_file << std::endl;
     }
 }
 

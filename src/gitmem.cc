@@ -23,6 +23,10 @@ int main(int argc, char **argv) {
   app.add_flag("-v,--verbose", verbose,
                "Enable verbose output from the interpreter.");
 
+  bool include_empty_commits = false;
+  app.add_flag("--include-empty-commits", include_empty_commits,
+               "Include empty commits in branching protocol output.");
+
   // TODO: These should probably be subcommands
   bool interactive = false;
   app.add_flag("-i,--interactive", interactive,
@@ -51,9 +55,10 @@ int main(int argc, char **argv) {
   }
 
   try {
-    gitmem::verbose.enabled = verbose;
+    gitmem::verbose::out.enabled = verbose;
+    gitmem::verbose::out.include_empty_commits = include_empty_commits;
 
-    gitmem::verbose << "Reading file " << input_path << std::endl;
+    gitmem::verbose::out << "Reading file " << input_path << std::endl;
     if (!std::filesystem::exists(input_path)) {
       std::cerr << "Input file does not exist: " << input_path << std::endl;
       return 1;
@@ -72,7 +77,7 @@ int main(int argc, char **argv) {
     if (output_path.empty())
       output_path = input_path.stem().replace_extension(".dot");
 
-    gitmem::verbose << "Output will be written to " << output_path << std::endl;
+    gitmem::verbose::out << "Output will be written to " << output_path << std::endl;
 
     int exit_status;
     wf::push_back(gitmem::lang::wf);
@@ -85,7 +90,7 @@ int main(int argc, char **argv) {
     }
     wf::pop_front();
 
-    gitmem::verbose << "Execution finished with exit status " << exit_status
+    gitmem::verbose::out << "Execution finished with exit status " << exit_status
                     << std::endl;
     return exit_status;
   } catch (const std::exception &e) {

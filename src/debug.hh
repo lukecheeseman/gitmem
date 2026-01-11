@@ -4,9 +4,12 @@
 
 namespace gitmem {
 
+namespace verbose {
+
 /* For debug printing */
 inline struct Verbose {
   bool enabled = false;
+  bool include_empty_commits = false;
 
   template <typename T> const Verbose &operator<<(const T &msg) const {
     if (enabled)
@@ -19,6 +22,8 @@ inline struct Verbose {
       std::cout << manip;
     return *this;
   }
-} verbose;
+} out;
+
+} // namespace verbose
 
 } // namespace gitmem
