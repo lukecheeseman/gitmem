@@ -612,11 +612,18 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
       }, event->data);
     }
 
-    // Add pending node if thread hasn't terminated and PC is valid
-    if (!thread.terminated && thread.pc < thread.block->size()) {
-      trieste::Node stmt = thread.block->at(thread.pc);
-      auto pending = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
-      link_in_program_order(tid, pending);
+    // Add pending node if thread hasn't terminated
+    if (!thread.terminated) {
+      if (thread.pc < thread.block->size()) {
+        // Thread is stuck waiting at a specific statement
+        trieste::Node stmt = thread.block->at(thread.pc);
+        auto pending = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
+        link_in_program_order(tid, pending);
+      } else {
+        // Thread has finished all statements but hasn't terminated yet
+        auto pending = std::make_shared<graph::Pending>("...");
+        link_in_program_order(tid, pending);
+      }
     }
   }
 
