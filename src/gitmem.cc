@@ -7,6 +7,8 @@
 #include "lang.hh"
 #include "linear/sync_protocol.hh"
 #include "branching/base_sync_protocol.hh"
+#include "branching/eager/sync_protocol.hh"
+#include "branching/lazy/sync_protocol.hh"
 
 int main(int argc, char **argv) {
   using namespace trieste;
@@ -24,9 +26,28 @@ int main(int argc, char **argv) {
   app.add_flag("-v,--verbose", verbose,
                "Enable verbose output from the interpreter.");
 
+  std::string sync_protocol = "linear";
+  auto sync_opt = app.add_option("--sync", sync_protocol, "Select a sync protocol for execution (default: linear)")
+    ->check(CLI::IsMember({"linear", "branching"}))
+    ->type_name("KIND");
+
+  std::string branching_mode = "eager";
+  auto branching_mode_opt = app.add_option("--branching-mode", branching_mode, "Select branching mode: eager or lazy (default: eager)")
+    ->check(CLI::IsMember({"eager", "lazy"}))
+    ->type_name("MODE");
+
   bool include_empty_commits = false;
-  app.add_flag("--include-empty-commits", include_empty_commits,
-               "Include empty commits in branching protocol output.");
+  auto include_empty_opt = app.add_flag("--include-empty-commits", include_empty_commits,
+               "Include empty commits in branching protocol output (branching mode only).");
+
+  bool raise_early_conflicts = false;
+  auto raise_early_opt = app.add_flag("--raise-early-conflicts", raise_early_conflicts,
+               "Raise conflict errors before suppressing writes (lazy branching mode only).");
+
+  // Set up option dependencies
+  branching_mode_opt->needs(sync_opt);
+  include_empty_opt->needs(sync_opt);
+  raise_early_opt->needs(branching_mode_opt);
 
   bool interactive = false;
   app.add_flag("-i,--interactive", interactive,
@@ -36,13 +57,29 @@ int main(int argc, char **argv) {
   app.add_flag("-e,--explore", model_check,
                "Explore all possible execution paths.");
 
-  std::string sync_protocol = "linear";
-  app.add_option("--sync", sync_protocol, "Select a sync protocol for execution (default: linear)")
-    ->check(CLI::IsMember({"linear", "branching-eager", "branching-lazy"}))
-    ->type_name("SYNC_KIND");
-
   try {
     app.parse(argc, argv);
+
+    // Additional validation for logical consistency
+    if (sync_protocol == "linear") {
+      if (*branching_mode_opt) {
+        std::cerr << "Error: --branching-mode is only valid with --sync branching" << std::endl;
+        return 1;
+      }
+      if (include_empty_commits) {
+        std::cerr << "Error: --include-empty-commits is only valid with --sync branching" << std::endl;
+        return 1;
+      }
+      if (raise_early_conflicts) {
+        std::cerr << "Error: --raise-early-conflicts is only valid with --sync branching" << std::endl;
+        return 1;
+      }
+    }
+
+    if (sync_protocol == "branching" && branching_mode == "eager" && raise_early_conflicts) {
+      std::cerr << "Error: --raise-early-conflicts is only valid with --branching-mode lazy" << std::endl;
+      return 1;
+    }
   } catch (const CLI::ParseError &e) {
     return app.exit(e);
   }
@@ -74,17 +111,16 @@ int main(int argc, char **argv) {
     // Build protocol based on command line options
     std::unique_ptr<gitmem::SyncProtocol> protocol;
     if (sync_protocol == "linear") {
-      protocol = gitmem::linear::LinearSyncProtocolBuilder().build();
-    } else if (sync_protocol == "branching-eager") {
-      protocol = gitmem::branching::BranchingSyncProtocolBuilder()
-        .eager()
-        .with_verbose_commits(include_empty_commits)
-        .build();
-    } else if (sync_protocol == "branching-lazy") {
-      protocol = gitmem::branching::BranchingSyncProtocolBuilder()
-        .lazy()
-        .with_verbose_commits(include_empty_commits)
-        .build();
+      protocol = std::make_unique<gitmem::linear::LinearSyncProtocol>();
+    } else if (sync_protocol == "branching") {
+      if (branching_mode == "eager") {
+        protocol = std::make_unique<gitmem::branching::BranchingEagerSyncProtocol>(include_empty_commits);
+      } else { // lazy
+        protocol = std::make_unique<gitmem::branching::BranchingLazySyncProtocol>(
+          include_empty_commits,
+          raise_early_conflicts
+        );
+      }
     }
 
     int exit_status;

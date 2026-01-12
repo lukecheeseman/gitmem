@@ -145,14 +145,6 @@ std::string BranchingSyncProtocolBase::build_revision_graph_dot(
   return build_commit_graph_dot(heads);
 }
 
-std::unique_ptr<SyncProtocol> BranchingSyncProtocolBuilder::build() const {
-  if (eager_mode) {
-    return std::make_unique<BranchingEagerSyncProtocol>(verbose_commits);
-  } else {
-    return std::make_unique<BranchingLazySyncProtocol>(verbose_commits);
-  }
-}
-
 } // end branching
 
 } // end gitmem

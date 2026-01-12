@@ -7,9 +7,9 @@ from collections import defaultdict
 EXAMPLES_DIR = "examples"
 
 SYNC_KINDS = {
-  "linear": "linear",
-  "branching-eager": "branching-eager",
-  "branching-lazy": "branching-lazy",
+  "linear": {"sync": "linear"},
+  "branching-eager": {"sync": "branching", "branching_mode": "eager"},
+  "branching-lazy": {"sync": "branching", "branching_mode": "lazy"},
 }
 
 def supports_color():
@@ -27,13 +27,21 @@ def red(text):
   return color(text, "31")
 
 def run_gitmem_test(gitmem_path, file_path, should_accept, sync_kind):
+  sync_config = SYNC_KINDS[sync_kind]
+
   cmd = [
     gitmem_path,
     file_path,
-    "--sync", sync_kind,
+    "--sync", sync_config["sync"],
+  ]
+
+  if "branching_mode" in sync_config:
+    cmd.extend(["--branching-mode", sync_config["branching_mode"]])
+
+  cmd.extend([
     "-e",
     "-o", "/dev/null"
-  ]
+  ])
 
   try:
     result = subprocess.run(
@@ -90,7 +98,7 @@ def main():
 
   # If none specified, run all
   if not selected_syncs:
-    selected_syncs = list(SYNC_KINDS.values())
+    selected_syncs = list(SYNC_KINDS.keys())
 
   results = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: {
     "total": 0,

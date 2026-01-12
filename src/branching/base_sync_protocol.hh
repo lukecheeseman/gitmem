@@ -53,31 +53,6 @@ public:
   }
 };
 
-// Builder for creating branching sync protocols
-class BranchingSyncProtocolBuilder {
-private:
-  bool eager_mode = false;
-  bool verbose_commits = false;
-
-public:
-  BranchingSyncProtocolBuilder& eager() {
-    eager_mode = true;
-    return *this;
-  }
-
-  BranchingSyncProtocolBuilder& lazy() {
-    eager_mode = false;
-    return *this;
-  }
-
-  BranchingSyncProtocolBuilder& with_verbose_commits(bool v = true) {
-    verbose_commits = v;
-    return *this;
-  }
-
-  std::unique_ptr<SyncProtocol> build() const;
-};
-
 } // end branching
 
 } // end gitmem
