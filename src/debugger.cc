@@ -1,4 +1,5 @@
 #include <regex>
+#include <cstdlib>
 
 #include "debug.hh"
 #include "debugger.hh"
@@ -23,11 +24,18 @@ struct Command {
   ThreadID argument = 0;
 };
 
-/** Show the global context, including locks and non-completed threads. If
- * show_all is true, show all threads, even those that have terminated
- * normally. */
-void show_global_context(const GlobalContext &gctx, bool show_all = false) {
-  std::cout << gctx << std::endl;
+/** Clear the terminal screen (platform-specific) */
+void clear_terminal() {
+#ifdef _WIN32
+    std::system("cls");
+#else
+    std::system("clear");
+#endif
+}
+
+/** Print a visual separator line */
+void print_separator() {
+    std::cout << std::string(60, '=') << std::endl;
 }
 
 /** Parse a command. See the help string for the 'Info' command for details.
@@ -182,8 +190,13 @@ void do_restart(Interpreter &interp,
 }
 
 /** Print the list of threads and optionally all threads */
-void do_list(GlobalContext &gctx, bool show_all) {
-    gctx.print(std::cout, show_all);
+void do_list(Interpreter &interp, bool show_all) {
+    // Uncomment the next line if you prefer clearing the screen
+    // clear_terminal();
+
+    print_separator();
+    interp.print_state(std::cout, show_all);
+    print_separator();
 }
 
 void do_finish(Interpreter& interp, bool print_graphs, const std::filesystem::path &output_file) {
@@ -227,7 +240,7 @@ int interpret_interactive(const trieste::Node ast,
     while (command.cmd != Command::Quit) {
         // Print threads if new threads appeared or command is List
         if (command.cmd != Command::Skip || prev_no_threads != gctx.threads.size()) {
-            do_list(gctx, command.cmd == Command::List);
+            do_list(interp, command.cmd == Command::List);
         }
         prev_no_threads = gctx.threads.size();
 
@@ -242,7 +255,7 @@ int interpret_interactive(const trieste::Node ast,
             case Command::Step: {
                 ThreadID tid = command.argument;
                 StepUIResult res = do_step(interp, tid, print_graphs, output_file);
-                if (res.kind != StepKind::Progressed)
+                if (res.kind != StepKind::Progressed && res.kind != StepKind::Terminated)
                     command = {Command::Skip};
                 break;
             }

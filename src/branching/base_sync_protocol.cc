@@ -119,12 +119,9 @@ BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
   auto& store = get_store(thread);
   store.commit_staging();
 
-  LockState& lock_state = get_store(lock);
-  std::shared_ptr<const Commit> lock_commit = lock_state.commit;
-
   // we know that the last committer was this thread, so no need to merge
   // this sort of mixes protocol logic and lock state, i am unsure if this is ideal
-
+  LockState& lock_state = get_store(lock);
   lock_state.commit = store.get_head();
 
   return std::nullopt;

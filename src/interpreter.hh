@@ -46,8 +46,8 @@ public:
   StepResult<ProgressStatus> run_single_thread_to_sync(Thread&);
   StepResult<ProgressStatus> run_threads_to_sync();
 
+  void print_state(std::ostream& os, bool show_all = false) const;
   void print_thread_traces();
-
   void print_revision_graph(const std::filesystem::path& output_path);
   void print_execution_graph(const std::filesystem::path& output_path);
 };

@@ -51,6 +51,7 @@ struct Commit {
   Timestamp id;
   std::unordered_map<std::string, Value> changes;
   std::vector<std::shared_ptr<const Commit>> parents;
+  bool conflicted = false;
 };
 
 std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commit>>& leaves);
@@ -126,7 +127,19 @@ public:
 
 class LockState : public LockSyncState {
 public:
+  ~LockState() = default;
+
   std::shared_ptr<const branching::Commit> commit;
+
+  inline std::ostream &print(std::ostream &os) const override {
+    os << "LockState{commit=";
+    if (commit)
+      os << commit->id;
+    else
+      os << "empty";
+    os << "}";
+    return os;
+  }
 };
 
 } // namespace branching

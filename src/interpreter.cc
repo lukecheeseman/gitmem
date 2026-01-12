@@ -495,6 +495,10 @@ int Interpreter::run() {
   return exception_detected ? 1 : 0;
 }
 
+void Interpreter::print_state(std::ostream& os, bool show_all) const {
+  gctx.print(os, show_all);
+}
+
 void Interpreter::print_thread_traces() {
   for (size_t tid = 0; tid < gctx.threads.size(); ++tid) {
     const auto& thread = gctx.threads[tid];

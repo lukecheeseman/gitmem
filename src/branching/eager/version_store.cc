@@ -39,6 +39,37 @@ find_lowest_common_ancestor(std::shared_ptr<const Commit> a,
                             std::shared_ptr<const Commit> b)
 {
   if (!a || !b) return nullptr;
+  if (a == b) return a;
+
+  // Check if 'a' is an ancestor of 'b'
+  {
+    std::unordered_set<std::shared_ptr<const Commit>> visited;
+    std::queue<std::shared_ptr<const Commit>> q;
+    q.push(b);
+    while (!q.empty()) {
+      auto c = q.front(); q.pop();
+      if (!c) continue;
+      if (c == a) return a;
+      if (!visited.insert(c).second) continue;
+      for (auto& p : c->parents)
+        q.push(p);
+    }
+  }
+
+  // Check if 'b' is an ancestor of 'a'
+  {
+    std::unordered_set<std::shared_ptr<const Commit>> visited;
+    std::queue<std::shared_ptr<const Commit>> q;
+    q.push(a);
+    while (!q.empty()) {
+      auto c = q.front(); q.pop();
+      if (!c) continue;
+      if (c == b) return b;
+      if (!visited.insert(c).second) continue;
+      for (auto& p : c->parents)
+        q.push(p);
+    }
+  }
 
   // Step 1: collect all ancestors of 'a'
   std::unordered_set<std::shared_ptr<const Commit>> ancestors_a;
@@ -81,15 +112,6 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   if (head == commit)
     return std::nullopt;
 
-  // Create merge commit (no changes itself)
-  auto merge_commit = std::make_shared<const Commit>(
-    Commit{
-      .id = base_timestamp++,
-      .parents = {head, commit},
-      .changes = {}  // merge commit does not write anything
-    }
-  );
-
   // Find lowest common ancestor of the two heads
   std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, commit);
   verbose::out << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
@@ -104,15 +126,33 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   traverse_until_lca(commit, lca, branch_b, visited, reach_memo);
 
   // 1. Eager conflict detection
+  std::optional<Conflict> conflict;
   for (const auto& [obj, commit_a] : branch_a) {
     auto it = branch_b.find(obj);
     if (it != branch_b.end() && it->second != commit_a) {
-      return Conflict{
+      conflict = Conflict{
         .obj = obj,
         .timestamp_a = commit_a->id,
         .timestamp_b = it->second->id
       };
+      break;
     }
+  }
+
+  // Create merge commit (even if conflicted, for visualization)
+  auto merge_commit = std::make_shared<Commit>(
+    Commit{
+      .id = base_timestamp++,
+      .changes = {},  // merge commit does not write anything
+      .parents = {head, commit},
+      .conflicted = conflict.has_value()
+    }
+  );
+
+  // If there was a conflict, update head but return the conflict
+  if (conflict) {
+    head = merge_commit;
+    return conflict;
   }
 
   // 2. Update thread-local last_writer incrementally

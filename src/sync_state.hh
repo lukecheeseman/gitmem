@@ -17,6 +17,15 @@ public:
   }
 };
 
-class LockSyncState {};
+class LockSyncState {
+public:
+  virtual ~LockSyncState() = default;
+
+  virtual std::ostream &print(std::ostream &os) const = 0;
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const LockSyncState &state) {
+    return state.print(os);
+  }
+};
 
 }

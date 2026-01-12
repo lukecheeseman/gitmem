@@ -156,6 +156,9 @@ void show_lock(const std::string &lock_name, const struct Lock &lock) {
   } else {
     std::cout << "<free>";
   }
+  if (lock.sync) {
+    std::cout << ", " << *(lock.sync);
+  }
   std::cout << std::endl;
 }
 
