@@ -164,6 +164,7 @@ std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commi
 
   std::unordered_set<const Commit*> visited;
   std::unordered_map<ThreadID, std::vector<std::shared_ptr<const Commit>>> commits_by_thread;
+  std::vector<std::shared_ptr<const Commit>> merge_commits;
   std::stack<std::shared_ptr<const Commit>> stack;
 
   // First pass: collect all commits and organize by thread
@@ -177,7 +178,12 @@ std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commi
     if (!commit || !visited.insert(commit.get()).second)
       continue;
 
-    commits_by_thread[commit->id.thread].push_back(commit);
+    // Merge commits (2+ parents) go outside clusters
+    if (commit->parents.size() >= 2) {
+      merge_commits.push_back(commit);
+    } else {
+      commits_by_thread[commit->id.thread].push_back(commit);
+    }
 
     for (const auto& parent : commit->parents) {
       if (parent) stack.push(parent);
@@ -209,6 +215,25 @@ std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commi
     }
 
     dot << "  }\n";
+  }
+
+  // Draw merge commits outside clusters
+  for (const auto& commit : merge_commits) {
+    const std::string cid = to_string(commit->id);
+
+    std::ostringstream label;
+    label << cid << " (merge)";
+    if (!commit->changes.empty()) {
+      label << "\\n";
+      bool first = true;
+      for (const auto& [obj, val] : commit->changes) {
+        if (!first) label << "\\n";
+        first = false;
+        label << obj << "→" << val;
+      }
+    }
+
+    dot << "  \"" << cid << "\" [label=\"" << label.str() << "\", style=filled, fillcolor=lightgray];\n";
   }
 
   // Draw edges (outside clusters so they can cross boundaries)

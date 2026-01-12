@@ -1,0 +1,14 @@
+x = 0;
+lock l1;
+$t = spawn {
+  assert (x == 0);
+  lock l1;
+  x = 42;
+  unlock l1;
+  assert (x == 42);
+};
+x = 2;
+assert (x == 2);
+unlock l1;
+lock l1;
+unlock l1;

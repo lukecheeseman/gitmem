@@ -35,7 +35,8 @@ static std::optional<SyncOperation> get_sync_operation(Node stmt) {
 
   // Spawn is an expression, not a statement, but we check for assignment of spawn
   if (s == lang::Assign) {
-    auto rhs = s / lang::Expr;
+    // A little gross but okay for now
+    auto rhs = s / lang::Expr / lang::Expr;
     if (rhs == lang::Spawn) return SyncOperation::Spawn;
   }
 
@@ -361,7 +362,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
   }
 
   // If we ran *any* statements, finishing is a sync point for next iteration
-  if (made_progress)
+  if (made_progress && gctx.protocol->is_scheduling_point(SyncOperation::End))
     return ProgressStatus::progress;
 
   // Otherwise, we truly reached the end this iteration
