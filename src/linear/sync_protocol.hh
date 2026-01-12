@@ -2,7 +2,6 @@
 
 #include "../sync_protocol.hh"
 #include "conflict.hh"
-#include "sync_kind.hh"
 #include "execution_state.hh"
 #include "linear/version_store.hh"
 
@@ -20,7 +19,10 @@ class LinearSyncProtocol final : public SyncProtocol {
 
 public:
   ~LinearSyncProtocol() override;
-  SyncKind kind() const override { return SyncKind::Linear; };
+
+  std::unique_ptr<SyncProtocol> clone() const override {
+    return std::make_unique<LinearSyncProtocol>();
+  }
 
   ReadResult read(ThreadContext &ctx, const std::string &var) override;
 
@@ -54,6 +56,13 @@ public:
 
   std::unique_ptr<LockSyncState> make_lock_state() const override {
     return nullptr;
+  }
+};
+
+class LinearSyncProtocolBuilder {
+public:
+  std::unique_ptr<SyncProtocol> build() const {
+    return std::make_unique<LinearSyncProtocol>();
   }
 };
 

@@ -53,6 +53,7 @@ public:
 };
 
 // Entry function
-int interpret(const trieste::Node, const std::filesystem::path &output_file, SyncKind sync_kind);
+int interpret(const trieste::Node, const std::filesystem::path &output_file,
+              std::unique_ptr<SyncProtocol> protocol);
 
 } // namespace gitmem

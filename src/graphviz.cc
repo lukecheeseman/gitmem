@@ -1,4 +1,5 @@
 #include "graphviz.hh"
+#include "overloaded.hh"
 #include <cassert>
 
 namespace gitmem {
@@ -111,12 +112,29 @@ void GraphvizPrinter::visitWrite(const Write *n) {
 }
 
 void GraphvizPrinter::visitRead(const Read *n) {
-  emitNode(n, "R" + n->var + " = " + to_string(n->value));
+  std::string label = "R" + n->var + " = ";
+
+  std::visit(overloaded{
+    [&](const Read::SuccessfulRead& success) {
+      label += to_string(success.value);
+    },
+    [&](const Conflict& conflict) {
+      label += "conflict";
+    }
+  }, n->read_result);
+
+  emitNode(n, label);
   emitProgramOrderEdge(n, n->next.get());
   visitProgramOrder(n->next.get());
 
-  assert(n->sauce);
-  emitReadFromEdge(n, n->sauce.get());
+  if (auto* conflict = std::get_if<Conflict>(&n->read_result)) {
+    emitConflict(n, *conflict);
+  } else {
+    auto& success = std::get<Read::SuccessfulRead>(n->read_result);
+    if (success.source) {
+      emitReadFromEdge(n, success.source.get());
+    }
+  }
 }
 
 void GraphvizPrinter::visitSpawn(const Spawn *n) {

@@ -5,7 +5,8 @@
 #include "model_checker.hh"
 #include "debugger.hh"
 #include "lang.hh"
-#include "sync_kind.hh"
+#include "linear/sync_protocol.hh"
+#include "branching/base_sync_protocol.hh"
 
 int main(int argc, char **argv) {
   using namespace trieste;
@@ -27,7 +28,6 @@ int main(int argc, char **argv) {
   app.add_flag("--include-empty-commits", include_empty_commits,
                "Include empty commits in branching protocol output.");
 
-  // TODO: These should probably be subcommands
   bool interactive = false;
   app.add_flag("-i,--interactive", interactive,
                "Enable interactive scheduling mode (use command ? for help).");
@@ -36,16 +36,9 @@ int main(int argc, char **argv) {
   app.add_flag("-e,--explore", model_check,
                "Explore all possible execution paths.");
 
-  auto string_to_sync = CLI::Transformer(std::map<std::string, gitmem::SyncKind> {
-      {"linear", gitmem::SyncKind::Linear},
-      {"branching-eager", gitmem::SyncKind::BranchingEager},
-      {"branching-lazy", gitmem::SyncKind::BranchingLazy}
-  });
-  string_to_sync.description("linear,branching-eager,branching-lazy");
-
-  gitmem::SyncKind sync_kind = gitmem::SyncKind::Linear;
-  app.add_option("--sync", sync_kind, "Select a sync protocol for execution (default: linear)")
-    ->transform(string_to_sync)
+  std::string sync_protocol = "linear";
+  app.add_option("--sync", sync_protocol, "Select a sync protocol for execution (default: linear)")
+    ->check(CLI::IsMember({"linear", "branching-eager", "branching-lazy"}))
     ->type_name("SYNC_KIND");
 
   try {
@@ -56,7 +49,6 @@ int main(int argc, char **argv) {
 
   try {
     gitmem::verbose::out.enabled = verbose;
-    gitmem::verbose::out.include_empty_commits = include_empty_commits;
 
     gitmem::verbose::out << "Reading file " << input_path << std::endl;
     if (!std::filesystem::exists(input_path)) {
@@ -79,14 +71,30 @@ int main(int argc, char **argv) {
 
     gitmem::verbose::out << "Output will be written to " << output_path << std::endl;
 
+    // Build protocol based on command line options
+    std::unique_ptr<gitmem::SyncProtocol> protocol;
+    if (sync_protocol == "linear") {
+      protocol = gitmem::linear::LinearSyncProtocolBuilder().build();
+    } else if (sync_protocol == "branching-eager") {
+      protocol = gitmem::branching::BranchingSyncProtocolBuilder()
+        .eager()
+        .with_verbose_commits(include_empty_commits)
+        .build();
+    } else if (sync_protocol == "branching-lazy") {
+      protocol = gitmem::branching::BranchingSyncProtocolBuilder()
+        .lazy()
+        .with_verbose_commits(include_empty_commits)
+        .build();
+    }
+
     int exit_status;
     wf::push_back(gitmem::lang::wf);
     if (model_check) {
-      exit_status = gitmem::model_check(result.ast, output_path, sync_kind);
+      exit_status = gitmem::model_check(result.ast, output_path, std::move(protocol));
     } else if (interactive) {
-      exit_status = gitmem::interpret_interactive(result.ast, output_path, sync_kind);
+      exit_status = gitmem::interpret_interactive(result.ast, output_path, std::move(protocol));
     } else {
-      exit_status = gitmem::interpret(result.ast, output_path, sync_kind);
+      exit_status = gitmem::interpret(result.ast, output_path, std::move(protocol));
     }
     wf::pop_front();
 

@@ -146,15 +146,10 @@ std::string BranchingSyncProtocolBase::build_revision_graph_dot(
 }
 
 std::unique_ptr<SyncProtocol> BranchingSyncProtocolBuilder::build() const {
-  switch (kind) {
-    case SyncKind::BranchingEager:
-      return std::make_unique<BranchingEagerSyncProtocol>(verbose);
-
-    case SyncKind::BranchingLazy:
-      return std::make_unique<BranchingLazySyncProtocol>(verbose);
-
-    default:
-      throw std::runtime_error("Invalid sync kind for branching protocol");
+  if (eager_mode) {
+    return std::make_unique<BranchingEagerSyncProtocol>(verbose_commits);
+  } else {
+    return std::make_unique<BranchingLazySyncProtocol>(verbose_commits);
   }
 }
 

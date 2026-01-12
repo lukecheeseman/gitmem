@@ -14,10 +14,12 @@ public:
 
   ~BranchingLazySyncProtocol() = default;
 
-  SyncKind kind() const override { return SyncKind::BranchingLazy; };
+  std::unique_ptr<SyncProtocol> clone() const override {
+    return std::make_unique<BranchingLazySyncProtocol>(verbose_commits);
+  }
 
   std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
-    return std::make_unique<LazyLocalVersionStore>(tid, verbose);
+    return std::make_unique<LazyLocalVersionStore>(tid, verbose_commits);
   }
 };
 

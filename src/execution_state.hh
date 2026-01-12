@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "lang.hh"
-#include "sync_kind.hh"
 #include "sync_state.hh"
 #include "graphviz.hh"
 #include "termination_status.hh"

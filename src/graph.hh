@@ -3,6 +3,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <vector>
+#include <variant>
 
 namespace gitmem {
 
@@ -80,13 +81,23 @@ struct Write : Node {
 
 struct Read : Node {
   const std::string var;
-  const size_t value;
   const size_t id;
-  const std::shared_ptr<const Node> sauce;
 
+  struct SuccessfulRead {
+    size_t value;
+    std::shared_ptr<const Node> source;
+  };
+
+  const std::variant<SuccessfulRead, Conflict> read_result;
+
+  // Constructor for successful read
   Read(const std::string var, const size_t value, const size_t id,
-       const std::shared_ptr<const Node> sauce)
-      : var(var), value(value), id(id), sauce(sauce) {}
+       const std::shared_ptr<const Node> source)
+      : var(var), id(id), read_result(SuccessfulRead{value, source}) {}
+
+  // Constructor for conflicting read
+  Read(const std::string var, const size_t id, Conflict conflict)
+      : var(var), id(id), read_result(std::move(conflict)) {}
 
   void accept(Visitor *v) const override { v->visitRead(this); }
 };

@@ -73,6 +73,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
       },
       [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
           verbose::out << (*conflict) << std::endl;
+          thread.trace.on_read(var, conflict);
           return termination::DataRace(conflict);
       }
     }, result);
@@ -583,16 +584,19 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           auto source = last_write_per_var.contains(arg.var)
                         ? last_write_per_var[arg.var]
                         : nullptr;
-          auto node = std::make_shared<graph::Read>(arg.var, arg.value, tid, source);
+
+          std::shared_ptr<graph::Read> node;
+          std::visit(overloaded{
+            [&](size_t val) {
+              node = std::make_shared<graph::Read>(arg.var, val, tid, source);
+            },
+            [&](const std::shared_ptr<ConflictBase>&) {
+              node = std::make_shared<graph::Read>(arg.var, tid, graph::Conflict(arg.var));
+            }
+          }, arg.value_or_conflict);
+
           link_in_program_order(tid, node);
           event_to_node[event] = node;
-
-          // Mark conflict if present (full conflict details would require more work)
-          if (arg.maybe_conflict) {
-            // For now, just mark the node red - proper conflict edges would need
-            // extracting source nodes from ConflictBase
-            // TODO: Extract and visualize conflict sources
-          }
         },
         [&](const SpawnEvent& arg) {
           // Link to the child thread's start node
@@ -678,9 +682,9 @@ void Interpreter::print_execution_graph(const std::filesystem::path& output_path
   gv.visit(exec_graph.entry.get());
 }
 
-
-int interpret(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
-  Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
+int interpret(const Node ast, const std::filesystem::path &output_path,
+              std::unique_ptr<SyncProtocol> protocol) {
+  Interpreter interp(GlobalContext(ast, std::move(protocol)));
   int result = interp.run();
 
   interp.print_revision_graph(output_path);

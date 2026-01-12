@@ -9,7 +9,6 @@ namespace verbose {
 /* For debug printing */
 inline struct Verbose {
   bool enabled = false;
-  bool include_empty_commits = false;
 
   template <typename T> const Verbose &operator<<(const T &msg) const {
     if (enabled)

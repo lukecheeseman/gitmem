@@ -6,5 +6,5 @@
 namespace gitmem {
   using namespace trieste;
 
-  int model_check(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind);
+  int model_check(const Node ast, const std::filesystem::path &output_path, std::unique_ptr<SyncProtocol> protocol);
 }

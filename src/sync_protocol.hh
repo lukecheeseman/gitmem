@@ -1,7 +1,6 @@
 #pragma once
 
 #include "conflict.hh"
-#include "sync_kind.hh"
 #include "sync_state.hh"
 #include "execution_state.hh"
 #include "read_result.hh"
@@ -10,12 +9,16 @@
 
 namespace gitmem {
 
-std::unique_ptr<SyncProtocol> make_protocol(SyncKind);
+// Forward declaration for builder
+class SyncProtocolBuilder;
 
 class SyncProtocol {
 public:
   virtual ~SyncProtocol() = default;
-  virtual SyncKind kind() const = 0;
+
+  // Create a fresh copy of this protocol with reset state
+  virtual std::unique_ptr<SyncProtocol> clone() const = 0;
+
   virtual std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const = 0;
   virtual std::unique_ptr<LockSyncState> make_lock_state() const = 0;
 
@@ -51,8 +54,6 @@ public:
                                   const SyncProtocol &protocol) {
     return protocol.print(os);
   }
-
-
 };
 
 } // namespace gitmem

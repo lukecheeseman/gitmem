@@ -14,10 +14,12 @@ public:
 
   ~BranchingEagerSyncProtocol() = default;
 
-  SyncKind kind() const override { return SyncKind::BranchingEager; };
+  std::unique_ptr<SyncProtocol> clone() const override {
+    return std::make_unique<BranchingEagerSyncProtocol>(verbose_commits);
+  }
 
   std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
-    return std::make_unique<EagerLocalVersionStore>(tid, verbose);
+    return std::make_unique<EagerLocalVersionStore>(tid, verbose_commits);
   }
 };
 

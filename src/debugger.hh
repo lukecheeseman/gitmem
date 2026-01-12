@@ -6,5 +6,5 @@
 namespace gitmem {
   int interpret_interactive(const trieste::Node,
                             const std::filesystem::path &output_file,
-                            SyncKind sync_kind);
+                            std::unique_ptr<SyncProtocol> protocol);
 }

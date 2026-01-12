@@ -58,7 +58,8 @@ build_output_path(const std::filesystem::path &output_path, const size_t idx) {
  * Explore all possible execution paths of the program, printing one trace
  * for each distinct final state that led to an error.
  */
-int model_check(const Node ast, const std::filesystem::path &output_path, SyncKind sync_kind) {
+int model_check(const Node ast, const std::filesystem::path &output_path,
+                std::unique_ptr<SyncProtocol> protocol) {
   auto final_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto failing_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto deadlocked_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
@@ -72,7 +73,10 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
   auto current_trace = std::vector<size_t>{0}; // Start with the main thread
   verbose::out << "==== Thread " << cursor->tid_ << " ====" << std::endl;
 
-  Interpreter interp(GlobalContext(ast, make_protocol(sync_kind)));
+  Interpreter interp(GlobalContext(ast, std::move(protocol)));
+
+  // Keep a pointer to the protocol for cloning later
+  const SyncProtocol* protocol_template = interp.context().protocol.get();
 
   GlobalContext& gctx = interp.context();
   interp.progress_thread(gctx.threads[cursor->tid_]);
@@ -161,7 +165,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path, SyncKi
     if (cursor->complete && !root->complete) {
       // Reset the cursor to the root and start a new trace
       verbose::out << std::endl << "Restarting trace..." << std::endl;
-      interp = Interpreter(GlobalContext(ast, make_protocol(sync_kind)));
+      interp = Interpreter(GlobalContext(ast, protocol_template->clone()));
       GlobalContext& gctx = interp.context();
 
       cursor = root;

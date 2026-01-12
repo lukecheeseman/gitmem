@@ -12,12 +12,15 @@ namespace branching {
 class BranchingSyncProtocolBase : public SyncProtocol {
 protected:
   GlobalVersionStore _global_store;
-  bool verbose;
+  bool verbose_commits;
 
-  explicit BranchingSyncProtocolBase(bool verbose) : verbose(verbose) {}
+  explicit BranchingSyncProtocolBase(bool verbose_commits)
+    : verbose_commits(verbose_commits) {}
 
 public:
   ~BranchingSyncProtocolBase() override;
+
+  std::unique_ptr<SyncProtocol> clone() const override = 0;
 
   ReadResult read(ThreadContext &ctx, const std::string &var) override;
 
@@ -53,27 +56,22 @@ public:
 // Builder for creating branching sync protocols
 class BranchingSyncProtocolBuilder {
 private:
-  SyncKind kind = SyncKind::BranchingLazy;
-  bool verbose = false;
+  bool eager_mode = false;
+  bool verbose_commits = false;
 
 public:
-  BranchingSyncProtocolBuilder& with_kind(SyncKind k) {
-    kind = k;
-    return *this;
-  }
-
   BranchingSyncProtocolBuilder& eager() {
-    kind = SyncKind::BranchingEager;
+    eager_mode = true;
     return *this;
   }
 
   BranchingSyncProtocolBuilder& lazy() {
-    kind = SyncKind::BranchingLazy;
+    eager_mode = false;
     return *this;
   }
 
   BranchingSyncProtocolBuilder& with_verbose_commits(bool v = true) {
-    verbose = v;
+    verbose_commits = v;
     return *this;
   }
 

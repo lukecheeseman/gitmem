@@ -34,7 +34,6 @@ add_executable(gitmem
   src/interpreter.cc
   src/debugger.cc
   src/model_checker.cc
-  src/sync_protocol.cc
   src/graphviz.cc
 )
 

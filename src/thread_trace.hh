@@ -2,6 +2,7 @@
 
 #include "thread_id.hh"
 #include "conflict.hh"
+#include "overloaded.hh"
 
 namespace gitmem {
 
@@ -9,7 +10,7 @@ struct Event;
 
 struct StartEvent {};
 struct SpawnEvent { const ThreadID child_tid; };
-struct ReadEvent { const std::string var; const size_t value; std::shared_ptr<ConflictBase> maybe_conflict; };
+struct ReadEvent { const std::string var; std::variant<const size_t, std::shared_ptr<ConflictBase>> value_or_conflict; };
 struct WriteEvent { const std::string var; const size_t value; };
 struct LockEvent { std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
 struct UnlockEvent { const std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; };
@@ -52,11 +53,12 @@ inline std::ostream& operator<<(std::ostream& os, const SpawnEvent& e) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const ReadEvent& e) {
-  os << "ReadEvent(var=\"" << e.var << "\", value=" << e.value;
-  if (e.maybe_conflict)
-    os << ", conflict)";
-  else
-    os << ")";
+  os << "ReadEvent(var=\"" << e.var << "\", ";
+  std::visit(overloaded{
+    [&os](size_t val) { os << "value=" << val; },
+    [&os](const std::shared_ptr<ConflictBase>&) { os << "conflict"; }
+  }, e.value_or_conflict);
+  os << ")";
   return os;
 }
 
@@ -139,8 +141,12 @@ private:
     return append<SpawnEvent>(child_tid);
   }
 
-  std::shared_ptr<Event> on_read(const std::string text, const size_t value, std::shared_ptr<ConflictBase> conflict = nullptr) {
-    return append<ReadEvent>(std::move(text), value, conflict);
+  std::shared_ptr<Event> on_read(const std::string text, const size_t value) {
+    return append<ReadEvent>(std::move(text), value);
+  }
+
+  std::shared_ptr<Event> on_read(const std::string text, std::shared_ptr<ConflictBase> conflict) {
+    return append<ReadEvent>(std::move(text), conflict);
   }
 
   std::shared_ptr<Event> on_write(const std::string text, const size_t value) {
