@@ -173,9 +173,9 @@ void GraphvizPrinter::visitUnlock(const Unlock *n) {
   visitProgramOrder(n->next.get());
 }
 
-void GraphvizPrinter::visitAssertionFailure(const AssertionFailure *n) {
+void GraphvizPrinter::visitAssertion(const Assertion *n) {
   emitNode(n, "Assert " + n->cond);
-  emitFillColor(n, "red");
+  if (!n->passed) emitFillColor(n, "red");
   // emitShape(n, "doubleoctagon");
   emitProgramOrderEdge(n, n->next.get());
   visitProgramOrder(n->next.get());

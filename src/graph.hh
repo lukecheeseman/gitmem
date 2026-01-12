@@ -25,7 +25,7 @@ struct Spawn;
 struct Join;
 struct Lock;
 struct Unlock;
-struct AssertionFailure;
+struct Assertion;
 struct Pending;
 
 struct Conflict {
@@ -49,7 +49,7 @@ struct Visitor {
   virtual void visitJoin(const Join *) = 0;
   virtual void visitLock(const Lock *) = 0;
   virtual void visitUnlock(const Unlock *) = 0;
-  virtual void visitAssertionFailure(const AssertionFailure *) = 0;
+  virtual void visitAssertion(const Assertion *) = 0;
   virtual void visitPending(const Pending *) = 0;
   virtual void visit(const Node *n) { n->accept(this); }
 };
@@ -144,12 +144,13 @@ struct Unlock : Node {
   void accept(Visitor *v) const override { v->visitUnlock(this); }
 };
 
-struct AssertionFailure : Node {
+struct Assertion : Node {
   const std::string cond;
+  const bool passed;
 
-  AssertionFailure(const std::string &cond) : cond(cond) {}
+  Assertion(const std::string &cond, const bool passed) : cond(cond), passed(passed) {}
 
-  void accept(Visitor *v) const override { v->visitAssertionFailure(this); }
+  void accept(Visitor *v) const override { v->visitAssertion(this); }
 };
 
 struct Pending : Node {

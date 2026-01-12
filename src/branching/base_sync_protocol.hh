@@ -48,6 +48,8 @@ public:
 
   std::string build_revision_graph_dot(const std::vector<const ThreadSyncState*>& thread_states) const override;
 
+  bool is_scheduling_point(SyncOperation op) const override;
+
   std::unique_ptr<LockSyncState> make_lock_state() const override {
     return std::make_unique<LockState>();
   }

@@ -145,6 +145,23 @@ std::string BranchingSyncProtocolBase::build_revision_graph_dot(
   return build_commit_graph_dot(heads);
 }
 
+bool BranchingSyncProtocolBase::is_scheduling_point(SyncOperation op) const {
+  // For branching protocol, only operations that actually synchronize state
+  // (lock/unlock) or require waiting (join) are scheduling points
+  switch (op) {
+    case SyncOperation::Lock:
+    case SyncOperation::Unlock:
+    case SyncOperation::Join:
+      return true;
+    case SyncOperation::Spawn:
+    case SyncOperation::Start:
+    case SyncOperation::End:
+      // These just inherit/commit locally - no scheduling decision needed
+      return false;
+  }
+  return false;
+}
+
 } // end branching
 
 } // end gitmem

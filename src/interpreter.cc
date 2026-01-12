@@ -26,18 +26,37 @@ using namespace trieste;
  * - t unlocking a lock l, which updates l to have t's versioned memory
  */
 
-static bool is_syncing(Node stmt) {
+// Map AST node types to sync operations
+static std::optional<SyncOperation> get_sync_operation(Node stmt) {
   auto s = stmt / lang::Stmt;
-  return s == lang::Join || s == lang::Lock || s == lang::Unlock;
+  if (s == lang::Join) return SyncOperation::Join;
+  if (s == lang::Lock) return SyncOperation::Lock;
+  if (s == lang::Unlock) return SyncOperation::Unlock;
+
+  // Spawn is an expression, not a statement, but we check for assignment of spawn
+  if (s == lang::Assign) {
+    auto rhs = s / lang::Expr;
+    if (rhs == lang::Spawn) return SyncOperation::Spawn;
+  }
+
+  return std::nullopt;
 }
 
-static bool is_syncing(Thread &thread) {
+// Check if a statement is a scheduling point according to the protocol
+static bool is_syncing(const SyncProtocol& protocol, Node stmt) {
+  if (auto op = get_sync_operation(stmt)) {
+    return protocol.is_scheduling_point(*op);
+  }
+  return false;
+}
+
+static bool is_syncing(const SyncProtocol& protocol, Thread &thread) {
   // Can only be true if a thread hasn't terminated
-  // Either it has executed all statements but not yet terminated (and my sync)
+  // Either it has executed all statements but not yet terminated (and may sync)
   // Or it is at a synchronisation node
   // The lazy eval here is important
   return !thread.terminated &&
-    ((thread.pc >= thread.block->size()) || is_syncing(thread.block->at(thread.pc)));
+    ((thread.pc >= thread.block->size()) || is_syncing(protocol, thread.block->at(thread.pc)));
 }
 
 /* Evaluating an expression either returns the result of the expression or
@@ -173,16 +192,6 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
         gctx.protocol->write(ctx, var, *val);
         thread.trace.on_write(var, *val);
-
-        // // Global variable writes need to create a new commit id
-        // // to track the history of updates
-        // auto &global = ctx.globals[var];
-        // global.val = *val;
-        // global.commit = gctx.uuid++;
-        // verbose::out <<  "Set global '" << lhs->location().view() << "' to " <<
-        // *val <<  " with id " << *(global.commit) << std::endl;
-
-        // gctx.commit_map[*(global.commit)] = node;
       } else {
         throw std::runtime_error("Bad left-hand side: " +
                                  std::string(lhs->type().str()));
@@ -330,7 +339,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
     Node stmt = block->at(pc);
 
     // Stop *before* executing a sync statement (except first)
-    if (made_progress && is_syncing(stmt))
+    if (made_progress && is_syncing(*gctx.protocol, stmt))
       return ProgressStatus::progress;
 
     auto result = run_statement(stmt, thread);
@@ -385,7 +394,7 @@ Interpreter::progress_thread(Thread& thread) {
     // If there are new threads, we can run them to sync as well
     any_progress = true;
     auto& new_thread = gctx.threads[i];
-    if (!is_syncing(new_thread)) {
+    if (!is_syncing(*gctx.protocol, new_thread)) {
       verbose::out << "==== Thread " << i << " (spawn) ====" << std::endl;
       progress_thread(new_thread);
     }
@@ -644,7 +653,7 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           }
         },
         [&](const AssertEvent& arg) {
-          auto node = std::make_shared<graph::AssertionFailure>(arg.condition);
+          auto node = std::make_shared<graph::Assertion>(arg.condition, arg.pass);
           link_in_program_order(tid, node);
           event_to_node[event] = node;
         }

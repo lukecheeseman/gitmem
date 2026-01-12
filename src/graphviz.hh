@@ -12,7 +12,7 @@ struct GraphvizPrinter : Visitor {
   void visitJoin(const Join *) override;
   void visitLock(const Lock *) override;
   void visitUnlock(const Unlock *) override;
-  void visitAssertionFailure(const AssertionFailure *) override;
+  void visitAssertion(const Assertion *) override;
   void visitPending(const Pending *) override;
   void visit(const Node *n) override;
 

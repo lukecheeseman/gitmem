@@ -197,6 +197,19 @@ LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &) {
   return std::nullopt;
 }
 
+bool LinearSyncProtocol::is_scheduling_point(SyncOperation op) const {
+  switch (op) {
+    case SyncOperation::Lock:
+    case SyncOperation::Unlock:
+    case SyncOperation::Join:
+    case SyncOperation::Spawn:
+    case SyncOperation::Start:
+    case SyncOperation::End:
+      return true;
+  }
+  assert(false && "Unknown SyncOperation");
+}
+
 } // namespace linear
 
 } // namespace gitmem

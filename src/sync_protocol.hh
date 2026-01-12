@@ -12,6 +12,16 @@ namespace gitmem {
 // Forward declaration for builder
 class SyncProtocolBuilder;
 
+// Types of synchronization operations that may be scheduling points
+enum class SyncOperation {
+  Spawn,
+  Join,
+  Start,
+  End,
+  Lock,
+  Unlock
+};
+
 class SyncProtocol {
 public:
   virtual ~SyncProtocol() = default;
@@ -46,6 +56,10 @@ public:
 
   virtual std::optional<std::shared_ptr<ConflictBase>>
   on_unlock(ThreadContext &thread, Lock &lock) = 0;
+
+  // Returns true if the given sync operation is a scheduling point for this protocol
+  // (i.e., the scheduler should consider switching threads here)
+  virtual bool is_scheduling_point(SyncOperation op) const = 0;
 
   virtual std::string build_revision_graph_dot(const std::vector<const ThreadSyncState*>& thread_states) const = 0;
 
