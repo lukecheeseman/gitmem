@@ -49,7 +49,7 @@ inline std::string to_string(const Timestamp& ts) {
 
 struct Commit {
   Timestamp id;
-  std::unordered_map<std::string, Value> changes;
+  std::unordered_map<std::string, ValueWithSource> changes;
   std::vector<std::shared_ptr<const Commit>> parents;
   bool conflicted = false;
 };
@@ -66,7 +66,7 @@ struct Conflict {
   Timestamp timestamp_b;
 };
 
-using BranchingReadResult = std::variant<std::monostate, Value, Conflict>;
+using BranchingReadResult = std::variant<std::monostate, ValueWithSource, Conflict>;
 
 inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
   return os << "Conflict{obj=" << c.obj
@@ -78,7 +78,7 @@ class LocalVersionStore : public ThreadSyncState {
 protected:
   Timestamp base_timestamp;
   std::shared_ptr<const Commit> head;
-  std::unordered_map<std::string, Value> staging;
+  std::unordered_map<std::string, ValueWithSource> staging;
 
   std::unordered_map<std::string, std::shared_ptr<const Commit>> last_writer; // cached
 
@@ -89,7 +89,7 @@ public:
 
   LocalVersionStore(ThreadID tid, bool verbose = false): base_timestamp(tid, 0), verbose(verbose) {}
 
-  void stage(std::string obj, Value value);
+  void stage(std::string obj, ValueWithSource value);
   void commit_staging();
 
   bool has_commited() { return staging.empty(); }

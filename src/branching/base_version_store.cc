@@ -26,7 +26,7 @@ void print_commit_recursive(std::ostream& os,
 
   // Print changes
   for (const auto& [obj, val] : commit->changes) {
-    os << std::string((depth + 1) * 2, ' ') << obj << " -> " << val << "\n";
+    os << std::string((depth + 1) * 2, ' ') << obj << " -> " << val.value << "\n";
   }
 
   // Print parents
@@ -55,7 +55,7 @@ std::ostream& operator<<(std::ostream& os, const Commit& commit) {
   return os;
 }
 
-void LocalVersionStore::stage(std::string obj, Value value) {
+void LocalVersionStore::stage(std::string obj, ValueWithSource value) {
   staging[obj] = value;
 }
 
@@ -116,7 +116,7 @@ std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
   for (const auto& [obj, val] : store.staging) {
     if (!first) os << ", ";
     first = false;
-    os << obj << "->" << val;
+    os << obj << "->" << val.value;
   }
 
   os << "}}";
@@ -211,7 +211,7 @@ std::string build_commit_graph_dot(const std::vector<std::shared_ptr<const Commi
         for (const auto& [obj, val] : commit->changes) {
           if (!first) label << "\\n";
           first = false;
-          label << obj << "→" << val;
+          label << obj << "→" << val.value;
         }
       }
 

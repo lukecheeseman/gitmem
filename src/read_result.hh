@@ -8,10 +8,8 @@ namespace gitmem {
 
 struct Event;
 
-using Value = size_t;
-
 struct ValueWithSource {
-  Value value;
+  size_t value;
   std::shared_ptr<Event> source_event;
 
   auto operator<=>(const ValueWithSource&) const = default;
