@@ -9,6 +9,8 @@
 
 namespace gitmem {
 
+struct Event;  // Forward declaration
+
 // Forward declaration for builder
 class SyncProtocolBuilder;
 
@@ -37,7 +39,7 @@ public:
 
   // Write a shared variable (staged, not committed)
   virtual void write(ThreadContext &ctx, const std::string &var,
-                     size_t value) = 0;
+                     ValueWithSource value) = 0;
 
   virtual std::optional<std::shared_ptr<ConflictBase>>
   on_spawn(ThreadContext &parent, ThreadContext &child) = 0;

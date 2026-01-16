@@ -26,7 +26,7 @@ public:
 
   ReadResult read(ThreadContext &ctx, const std::string &var) override;
 
-  void write(ThreadContext &ctx, const std::string &var, size_t value) override;
+  void write(ThreadContext &ctx, const std::string &var, ValueWithSource value) override;
 
   std::optional<std::shared_ptr<ConflictBase>>
   on_spawn(ThreadContext &parent, ThreadContext &child) override;

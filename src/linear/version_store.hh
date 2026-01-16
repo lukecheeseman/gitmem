@@ -7,8 +7,12 @@
 #include <vector>
 #include <iostream>
 #include "sync_state.hh"
+#include "thread_id.hh"
+#include "read_result.hh"
 
 namespace gitmem {
+
+struct Event;  // Forward declaration
 
 namespace linear {
 
@@ -36,13 +40,14 @@ using Value = size_t;
 
 class Version {
   Timestamp _timestamp;
-  Value _value;
+  ValueWithSource _value;
 
 public:
-  Version(Timestamp ts, Value value) : _timestamp(ts), _value(value) {}
+  Version(Timestamp ts, ValueWithSource value)
+    : _timestamp(ts), _value(value) {}
 
   Timestamp timestamp() const { return _timestamp; }
-  Value value() const { return _value; }
+  ValueWithSource value() const { return _value; }
 };
 
 using VersionHistory = std::vector<Version>;
@@ -64,7 +69,7 @@ struct Conflict {
 class LocalVersionStore : public ThreadSyncState {
   ThreadID tid;
   uint64_t _timestamp;
-  std::unordered_map<std::string, Value> _staging;
+  std::unordered_map<std::string, ValueWithSource> _staging;
 
 public:
   ~LocalVersionStore() = default;
@@ -76,10 +81,10 @@ public:
   uint64_t timestamp() const { return _timestamp; }
   const auto &staged_changes() const { return _staging; }
 
-  void stage(std::string obj, Value value);
+  void stage(std::string obj, ValueWithSource value);
   void clear_staging();
   void advance_base(uint64_t ts);
-  std::optional<Value> get_staged(std::string obj);
+  std::optional<ValueWithSource> get_staged(std::string obj);
 
   bool operator==(const LocalVersionStore& other) const;
 
@@ -109,15 +114,15 @@ class GlobalVersionStore {
 public:
   uint64_t current_counter() const { return _counter; }
 
-  std::optional<Value> get_version_for_timestamp(std::string, uint64_t) const;
+  std::optional<ValueWithSource> get_version_for_timestamp(std::string, uint64_t) const;
 
   std::optional<Conflict>
   check_conflicts(uint64_t base,
-                  const std::unordered_map<std::string, Value> &changes) const;
+                  const std::unordered_map<std::string, ValueWithSource> &changes) const;
 
   uint64_t
   apply_changes(ThreadID tid, uint64_t base,
-                const std::unordered_map<std::string, Value> &changes);
+                const std::unordered_map<std::string, ValueWithSource> &changes);
 
   friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);
 

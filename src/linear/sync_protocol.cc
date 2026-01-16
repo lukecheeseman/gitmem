@@ -49,7 +49,7 @@ std::string LinearSyncProtocol::build_revision_graph_dot(
       node_id << obj_name << "_v" << i;
 
       std::ostringstream label;
-      label << version.timestamp() << "\\n" << obj_name << "=" << version.value();
+      label << version.timestamp() << "\\n" << obj_name << "=" << version.value().value;
 
       dot << "    \"" << node_id.str() << "\" [label=\"" << label.str() << "\"];\n";
     }
@@ -107,23 +107,21 @@ ReadResult LinearSyncProtocol::read(ThreadContext &ctx,
                                                const std::string &var) {
   auto& store = get_store(ctx);
 
-  if (auto result = store.get_staged(var))
+  if (auto result = store.get_staged(var)) {
     return *result;
+  }
 
-  std::optional<size_t> value = _global_store.get_version_for_timestamp(
+  std::optional<ValueWithSource> value = _global_store.get_version_for_timestamp(
       var, store.timestamp());
-  if (value)
-    return *value;
-
-  // we do not need to record the staged value for correctness
-  // TODO: there is something about working out if a value has changed vs been
-  // written
+  if (value) {
+    return value.value();
+  }
 
   return std::monostate{};
 }
 
 void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
-                               size_t value) {
+                               ValueWithSource value) {
   // write into the staging area of the thread
   auto& store = get_store(ctx);
   store.stage(var, value);
@@ -204,9 +202,7 @@ bool LinearSyncProtocol::is_scheduling_point(SyncOperation op) const {
     case SyncOperation::Join:
     case SyncOperation::Spawn:
     case SyncOperation::Start:
-    case SyncOperation::End:
-      return true;
-  }
+    case SyncOperation::End:      return true;  }
   assert(false && "Unknown SyncOperation");
 }
 

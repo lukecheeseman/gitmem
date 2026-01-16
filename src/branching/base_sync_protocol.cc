@@ -32,7 +32,7 @@ ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
 
   return std::visit(overloaded{
     [](std::monostate) -> ReadResult { return std::monostate{}; },
-    [](const Value& v) -> ReadResult { return v; },
+    [](const Value& v) -> ReadResult { return ValueWithSource{v, nullptr}; },
     [&](const Conflict& c) -> ReadResult {
       return std::make_shared<BranchingConflict>(
         c.obj, std::pair{c.timestamp_a, c.timestamp_b}
@@ -43,9 +43,9 @@ ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
 }
 
 void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var,
-                                  size_t value) {
+                                  ValueWithSource value) {
   auto& store = get_store(ctx);
-  store.stage(var, value);
+  store.stage(var, value.value);  // Branching protocol doesn't track sources yet
 }
 
 std::optional<std::shared_ptr<ConflictBase>>

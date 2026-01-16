@@ -86,10 +86,10 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
           // invalid: reading a variable that hasn't been written
           return termination::UnassignedRead(var);
       },
-      [&](Value value) -> std::variant<size_t, TerminationStatus> {
+      [&](ValueWithSource value_with_source) -> std::variant<size_t, TerminationStatus> {
           // normal read
-          thread.trace.on_read(var, value);
-          return value;
+          thread.trace.on_read(var, value_with_source);
+          return value_with_source.value;
       },
       [&](std::shared_ptr<ConflictBase>& conflict) -> std::variant<size_t, TerminationStatus> {
           verbose::out << (*conflict) << std::endl;
@@ -191,8 +191,9 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
       } else if (lhs == lang::Var) {
 
-        gctx.protocol->write(ctx, var, *val);
-        thread.trace.on_write(var, *val);
+        auto write_event = thread.trace.on_write(var, *val);
+        gctx.protocol->write(ctx, var
+        , ValueWithSource{*val, write_event});
       } else {
         throw std::runtime_error("Bad left-hand side: " +
                                  std::string(lhs->type().str()));
@@ -536,11 +537,11 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Track the last unlock event for each lock (for lock->unlock edges)
   std::unordered_map<std::string, std::shared_ptr<graph::Node>> last_unlock_per_lock;
 
-  // Track write events per variable (for read->write edges)
-  std::unordered_map<std::string, std::shared_ptr<graph::Node>> last_write_per_var;
-
   // Track join nodes that need fixing up after all threads are processed
   std::vector<std::shared_ptr<graph::Join>> joins_to_fix;
+
+  // Track read nodes that need their source fixed up
+  std::vector<std::pair<std::shared_ptr<graph::Read>, std::shared_ptr<Event>>> reads_to_fix;
 
   // Map from trace events to graph nodes
   std::unordered_map<std::shared_ptr<Event>, std::shared_ptr<graph::Node>> event_to_node;
@@ -589,20 +590,18 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
         },
         [&](const WriteEvent& arg) {
           auto node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
-          last_write_per_var[arg.var] = node;
           link_in_program_order(tid, node);
           event_to_node[event] = node;
         },
         [&](const ReadEvent& arg) {
           // Link to the write that produced this value
-          auto source = last_write_per_var.contains(arg.var)
-                        ? last_write_per_var[arg.var]
-                        : nullptr;
-
           std::shared_ptr<graph::Read> node;
           std::visit(overloaded{
-            [&](size_t val) {
-              node = std::make_shared<graph::Read>(arg.var, val, tid, source);
+            [&](const ReadValue& val) {
+              // Create the read node, but we might need to fix up the source later
+              node = std::make_shared<graph::Read>(arg.var, val.value, tid, nullptr);
+              assert(val.source_event && "source missing");
+              reads_to_fix.push_back({node, val.source_event});
             },
             [&](const std::shared_ptr<ConflictBase>&) {
               node = std::make_shared<graph::Read>(arg.var, tid, graph::Conflict(arg.var));
@@ -687,6 +686,12 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
     const_cast<std::shared_ptr<const graph::Node>&>(join_node->joinee) = thread_tails[joinee_tid];
   }
 
+  // Fix up read nodes to point to their source write events
+  for (auto& [read_node, source_event] : reads_to_fix) {
+    assert(event_to_node.contains(source_event) && "source missing in event_to_node map");
+    read_node->set_source(event_to_node[source_event]);
+  }
+
   return g;
 }
 
@@ -701,6 +706,7 @@ int interpret(const Node ast, const std::filesystem::path &output_path,
   Interpreter interp(GlobalContext(ast, std::move(protocol)));
   int result = interp.run();
 
+  interp.print_execution_graph(output_path);
   interp.print_revision_graph(output_path);
 
   return result;

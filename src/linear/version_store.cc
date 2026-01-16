@@ -3,6 +3,8 @@
 
 #include "sync_protocol.hh"
 #include "version_store.hh"
+#include "thread_trace.hh"
+#include "read_result.hh"
 
 namespace gitmem {
 
@@ -12,15 +14,17 @@ namespace linear {
 // LocalVersionStore
 // -----------------------------
 
-void LocalVersionStore::stage(std::string obj, Value value) {
+void LocalVersionStore::stage(std::string obj, ValueWithSource value) {
   _staging[obj] = value;
 }
 
-void LocalVersionStore::clear_staging() { _staging.clear(); }
+void LocalVersionStore::clear_staging() {
+  _staging.clear();
+}
 
 void LocalVersionStore::advance_base(uint64_t ts) { _timestamp = ts; }
 
-std::optional<Value> LocalVersionStore::get_staged(std::string obj) {
+std::optional<ValueWithSource> LocalVersionStore::get_staged(std::string obj) {
   auto it = _staging.find(obj);
   return it != _staging.end() ? std::make_optional(it->second) : std::nullopt;
 }
@@ -39,7 +43,7 @@ std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
   for (const auto& [obj, val] : store._staging) {
     if (!first) os << ", ";
     first = false;
-    os << obj << "->" << val;
+    os << obj << "->" << val.value << " (" << val.source_event << ")";
   }
 
   os << "}}";
@@ -50,7 +54,7 @@ std::ostream& operator<<(std::ostream& os, const LocalVersionStore& store) {
 // GlobalVersionStore
 // -----------------------------
 
-std::optional<Value>
+std::optional<ValueWithSource>
 GlobalVersionStore::get_version_for_timestamp(std::string obj,
                                               uint64_t ts) const {
   const auto it = _history.find(obj);
@@ -70,7 +74,7 @@ GlobalVersionStore::get_version_for_timestamp(std::string obj,
 
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
     uint64_t base,
-    const std::unordered_map<std::string, Value> &changes) const {
+    const std::unordered_map<std::string, ValueWithSource> &changes) const {
   for (const auto &[obj, _] : changes) {
     auto it = _history.find(obj);
     if (it == _history.end()) {
@@ -87,7 +91,8 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
 }
 
 uint64_t GlobalVersionStore::apply_changes(
-    ThreadID tid, uint64_t base, const std::unordered_map<std::string, Value> &changes) {
+    ThreadID tid, uint64_t base,
+    const std::unordered_map<std::string, ValueWithSource> &changes) {
   if (auto conflict = check_conflicts(base, changes)) {
     throw std::logic_error("apply_changes called with conflicts");
   }
@@ -109,7 +114,7 @@ std::ostream& operator<<(std::ostream& os, const GlobalVersionStore& store) {
     os << "  Object " << obj_name << ":\n";
 
     for (const auto& version : history) {
-      os << "    [" << version.timestamp() << "] = " << version.value() << "\n";
+      os << "    [" << version.timestamp() << "] = " << version.value().value << "\n";
     }
   }
 

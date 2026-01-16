@@ -3,6 +3,7 @@
 #include "thread_id.hh"
 #include "conflict.hh"
 #include "overloaded.hh"
+#include "read_result.hh"
 
 namespace gitmem {
 
@@ -10,7 +11,8 @@ struct Event;
 
 struct StartEvent {};
 struct SpawnEvent { const ThreadID child_tid; };
-struct ReadEvent { const std::string var; std::variant<const size_t, std::shared_ptr<ConflictBase>> value_or_conflict; };
+struct ReadValue { const size_t value; const std::shared_ptr<Event> source_event; };
+struct ReadEvent { const std::string var; std::variant<const ReadValue, std::shared_ptr<ConflictBase>> value_or_conflict; };
 struct WriteEvent { const std::string var; const size_t value; };
 struct LockEvent { std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
 struct UnlockEvent { const std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; };
@@ -55,7 +57,7 @@ inline std::ostream& operator<<(std::ostream& os, const SpawnEvent& e) {
 inline std::ostream& operator<<(std::ostream& os, const ReadEvent& e) {
   os << "ReadEvent(var=\"" << e.var << "\", ";
   std::visit(overloaded{
-    [&os](size_t val) { os << "value=" << val; },
+    [&os](const ReadValue& val) { os << "value=" << val.value << " (from " << val.source_event->eid << ")"; },
     [&os](const std::shared_ptr<ConflictBase>&) { os << "conflict"; }
   }, e.value_or_conflict);
   os << ")";
@@ -141,8 +143,8 @@ private:
     return append<SpawnEvent>(child_tid);
   }
 
-  std::shared_ptr<Event> on_read(const std::string text, const size_t value) {
-    return append<ReadEvent>(std::move(text), value);
+  std::shared_ptr<Event> on_read(const std::string text, ValueWithSource value) {
+    return append<ReadEvent>(std::move(text), ReadValue{value.value, value.source_event});
   }
 
   std::shared_ptr<Event> on_read(const std::string text, std::shared_ptr<ConflictBase> conflict) {
@@ -194,23 +196,3 @@ inline std::ostream& operator<<(std::ostream& os, const ThreadTrace& tt) {
 }
 
 } // namespace gitmem
-
-// template <typename T, typename... Args>
-// std::shared_ptr<T> thread_append_node(ThreadContext &ctx, Args &&...args) {
-//   assert(ctx.tail);
-//   auto node = std::make_shared<T>(std::forward<Args>(args)...);
-//   ctx.tail->next = node;
-//   ctx.tail = node;
-//   return node;
-// }
-
-// template <>
-// std::shared_ptr<graph::Pending>
-// thread_append_node<graph::Pending>(ThreadContext &ctx, std::string &&stmt) {
-//   // pending nodes don't update the tail position as we will destroy them
-//   // once we execute the node
-//   auto s = std::regex_replace(stmt, std::regex("\n"), "\\l   ");
-//   auto node = make_shared<graph::Pending>(std::move(s));
-//   ctx.tail->next = node;
-//   return node;
-// }
