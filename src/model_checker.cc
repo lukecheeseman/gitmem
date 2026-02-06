@@ -177,14 +177,15 @@ int model_check(const Node ast, const std::filesystem::path &output_path,
     }
   }
 
-  verbose::out << "Found a total of " << final_traces.size()
-          << " trace(s) with distinct final states:" << std::endl;
+  std::cout << "Found a total of " << final_traces.size()
+          << " trace(s) with distinct final states"
+          << " (errors: " << failing_traces.size()
+          << ", no errors: " << final_traces.size() - failing_traces.size() << ")"
+          << std::endl;
   print_traces(verbose::out, final_traces);
 
   size_t idx = 0;
   if (!failing_traces.empty()) {
-    std::cout << "Found " << failing_traces.size()
-              << " trace(s) with errors:" << std::endl;
     print_traces(std::cout, failing_traces);
 
     for (const auto &ctx : failing_contexts) {
