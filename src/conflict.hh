@@ -44,18 +44,13 @@ struct ConflictBase {
 template <typename VersionID>
 struct Conflict : ConflictBase {
   std::string var;
-  VersionID version_a;
-  VersionID version_b;
-  FileLocation location_a;
-  FileLocation location_b;
+  std::pair<VersionID, FileLocation> version_a;
+  std::pair<VersionID, FileLocation> version_b;
 
   Conflict(std::string var,
-           VersionID version_a,
-           VersionID version_b,
-           FileLocation location_a,
-           FileLocation location_b)
-      : var(std::move(var)), version_a(std::move(version_a)), version_b(std::move(version_b)),
-        location_a(std::move(location_a)), location_b(std::move(location_b)) {}
+           std::pair<VersionID, FileLocation> version_a,
+           std::pair<VersionID, FileLocation> version_b)
+      : var(std::move(var)), version_a(std::move(version_a)), version_b(std::move(version_b)) {}
 
   std::ostream &print(std::ostream &os) const override;
 
@@ -64,12 +59,12 @@ struct Conflict : ConflictBase {
   }
 
   std::pair<FileLocation, FileLocation> source_locations() const override {
-    return std::make_pair(location_a, location_b);
+    return std::make_pair(version_a.second, version_b.second);
   }
 
   bool operator==(const Conflict &other) const {
     // Ignore the FileLocation information for equality, as it is only for reporting purposes
-    return var == other.var && version_a == other.version_a && version_b == other.version_b;
+    return var == other.var && version_a.first == other.version_a.first && version_b.first == other.version_b.first;
   }
 
   bool operator==(const ConflictBase& other) const override {
@@ -82,8 +77,8 @@ struct Conflict : ConflictBase {
 
 template <typename T>
 std::ostream &Conflict<T>::print(std::ostream &os) const {
-  os << "conflict on " << var << " { " << version_a << ", "
-     << version_b << " }";
+  os << "conflict on " << var << " { " << version_a.first << "@" << version_a.second << ", "
+     << version_b.first << "@" << version_b.second << " }";
   return os;
 }
 

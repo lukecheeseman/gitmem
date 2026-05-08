@@ -73,7 +73,7 @@ GlobalVersionStore::get_version_for_timestamp(std::string obj,
 }
 
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
-    uint64_t base,
+  Timestamp current_timestamp,
     const std::unordered_map<std::string, ValueWithSource> &changes) const {
   auto event_location = [](const ValueWithSource& value) -> FileLocation {
     if (!value.source_event)
@@ -93,26 +93,24 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
     }
 
     const Version &latest = it->second.back();
-    if (latest.timestamp().counter > base) {
-      return Conflict{
-          .object = obj,
-          .local_base = base,
-          .global_head = latest.timestamp(),
-          .local_location = event_location(local_value),
-          .global_location = event_location(latest.value())};
+    if (latest.timestamp().counter > current_timestamp.counter) {
+      return Conflict(
+          obj,
+          {current_timestamp, event_location(local_value)},
+          {latest.timestamp(), event_location(latest.value())});
     }
   }
   return std::nullopt;
 }
 
 uint64_t GlobalVersionStore::apply_changes(
-    ThreadID tid, uint64_t base,
+    ThreadID tid, uint64_t current_counter,
     const std::unordered_map<std::string, ValueWithSource> &changes) {
-  if (auto conflict = check_conflicts(base, changes)) {
+  if (auto conflict = check_conflicts({tid, current_counter}, changes)) {
     throw std::logic_error("apply_changes called with conflicts");
   }
 
-  // Increment the global counter and create new timestamp with thread info from base
+  // Increment the global counter and create the next global timestamp for this thread.
   Timestamp new_ts{tid, ++_counter};
 
   for (const auto &[obj, value] : changes) {

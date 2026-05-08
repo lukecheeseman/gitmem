@@ -153,13 +153,10 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   for (const auto& [obj, commit_a] : branch_a) {
     auto it = branch_b.find(obj);
     if (it != branch_b.end() && it->second != commit_a) {
-      conflict = Conflict{
-        .obj = obj,
-        .timestamp_a = commit_a->id,
-        .timestamp_b = it->second->id,
-        .location_a = get_loc(commit_a, obj),
-        .location_b = get_loc(it->second, obj),
-      };
+      conflict = Conflict(
+        obj,
+        {commit_a->id, get_loc(commit_a, obj)},
+        {it->second->id, get_loc(it->second, obj)});
       break;
     }
   }

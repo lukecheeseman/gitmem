@@ -71,15 +71,9 @@ std::string LinearMemoryModel::build_revision_graph_dot(
 
 std::optional<LinearConflict>
 LinearMemoryModel::push(LocalVersionStore &local) {
-  if (auto conflict = _global_store.check_conflicts(local.timestamp(),
+  if (auto conflict = _global_store.check_conflicts({local.thread(), local.timestamp()},
                                                     local.staged_changes())) {
-
-    return std::make_optional<LinearConflict>(
-        conflict->object,
-      conflict->local_base,
-      conflict->global_head,
-      conflict->local_location,
-      conflict->global_location);
+    return *conflict;
   }
 
   uint64_t new_base = _global_store.apply_changes(
@@ -92,15 +86,9 @@ LinearMemoryModel::push(LocalVersionStore &local) {
 
 std::optional<LinearConflict>
 LinearMemoryModel::pull(LocalVersionStore &local) {
-  if (auto conflict = _global_store.check_conflicts(local.timestamp(),
+  if (auto conflict = _global_store.check_conflicts({local.thread(), local.timestamp()},
                                                     local.staged_changes())) {
-
-    return std::make_optional<LinearConflict>(
-        conflict->object,
-      conflict->local_base,
-      conflict->global_head,
-      conflict->local_location,
-      conflict->global_location);
+    return *conflict;
   }
 
   local.advance_base( _global_store.current_counter());

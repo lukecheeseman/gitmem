@@ -52,17 +52,7 @@ public:
 
 using VersionHistory = std::vector<Version>;
 
-// -----------------------------
-// Conflict
-// -----------------------------
-
-struct Conflict {
-  std::string object;
-  Timestamp local_base;
-  Timestamp global_head;
-  FileLocation local_location;
-  FileLocation global_location;
-};
+using Conflict = gitmem::Conflict<Timestamp>;
 
 // -----------------------------
 // LocalVersionStore
@@ -119,11 +109,11 @@ public:
   std::optional<ValueWithSource> get_version_for_timestamp(std::string, uint64_t) const;
 
   std::optional<Conflict>
-  check_conflicts(uint64_t base,
+  check_conflicts(Timestamp current_timestamp,
                   const std::unordered_map<std::string, ValueWithSource> &changes) const;
 
   uint64_t
-  apply_changes(ThreadID tid, uint64_t base,
+  apply_changes(ThreadID tid, uint64_t current_counter,
                 const std::unordered_map<std::string, ValueWithSource> &changes);
 
   friend std::ostream& operator<<(std::ostream&, const GlobalVersionStore&);

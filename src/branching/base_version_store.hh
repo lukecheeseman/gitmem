@@ -60,21 +60,9 @@ bool can_reach(const std::shared_ptr<const Commit>& commit, const std::shared_pt
 
 std::ostream& operator<<(std::ostream& os, const Commit& commit);
 
-struct Conflict {
-  std::string obj;
-  Timestamp timestamp_a;
-  Timestamp timestamp_b;
-  FileLocation location_a;
-  FileLocation location_b;
-};
+using Conflict = gitmem::Conflict<Timestamp>;
 
 using BranchingReadResult = std::variant<std::monostate, ValueWithSource, Conflict>;
-
-inline std::ostream& operator<<(std::ostream& os, const Conflict& c) {
-  os << "conflicting writes to '" << c.obj << "' at "
-     << c.location_a.linecol() << " and " << c.location_b.linecol();
-  return os;
-}
 
 class LocalVersionStore : public ThreadSyncState {
 protected:
