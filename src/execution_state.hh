@@ -14,7 +14,7 @@
 
 namespace gitmem {
 
-class SyncProtocol;
+class MemoryModel;
 
 struct ThreadContext {
   std::unordered_map<std::string, size_t> locals;
@@ -27,7 +27,7 @@ struct ThreadContext {
   ThreadContext(ThreadContext&&) = default;
   ThreadContext& operator=(ThreadContext&&) = default;
 
-  ThreadContext(ThreadID tid, std::unique_ptr<SyncProtocol>&);
+  ThreadContext(ThreadID tid, std::unique_ptr<MemoryModel>&);
 
   bool operator==(const ThreadContext &other) const;
 
@@ -79,10 +79,10 @@ public:
   // std::shared_ptr<graph::Node> entry_node;
 
   // Synchronisation semantics (policy)
-  std::unique_ptr<SyncProtocol> protocol;
+  std::unique_ptr<MemoryModel> model;
 
   GlobalContext(const trieste::Node &ast,
-                std::unique_ptr<SyncProtocol> protocol);
+                std::unique_ptr<MemoryModel> model);
   ~GlobalContext();
 
   GlobalContext clone() const;

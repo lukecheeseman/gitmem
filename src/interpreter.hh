@@ -6,7 +6,7 @@
 #include "lang.hh"
 #include "progress_status.hh"
 #include <trieste/trieste.h>
-#include "sync_protocol.hh"
+#include "memory_model.hh"
 #include "termination_status.hh"
 
 namespace gitmem {
@@ -54,6 +54,6 @@ public:
 
 // Entry function
 int interpret(const trieste::Node, const std::filesystem::path &output_file,
-              std::unique_ptr<SyncProtocol> protocol);
+              std::unique_ptr<MemoryModel> model);
 
 } // namespace gitmem

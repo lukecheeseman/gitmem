@@ -185,7 +185,7 @@ void do_restart(Interpreter &interp,
                 const trieste::Node ast,
                 bool print_graphs,
                 const std::filesystem::path &output_file) {
-    interp = Interpreter(GlobalContext(ast, interp.context().protocol->clone()));
+    interp = Interpreter(GlobalContext(ast, interp.context().model->clone()));
     maybe_print_graph(interp, print_graphs, output_file);
 }
 
@@ -226,8 +226,8 @@ void print_help() {
 /** Main interactive interpreter loop */
 int interpret_interactive(const trieste::Node ast,
                           const std::filesystem::path &output_file,
-                          std::unique_ptr<SyncProtocol> protocol) {
-    Interpreter interp(GlobalContext(ast, std::move(protocol)));
+                          std::unique_ptr<MemoryModel> model) {
+    Interpreter interp(GlobalContext(ast, std::move(model)));
     GlobalContext &gctx = interp.context();
 
     size_t prev_no_threads = 1;

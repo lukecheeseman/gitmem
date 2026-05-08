@@ -5,7 +5,7 @@
 
 #include "debug.hh"
 #include "interpreter.hh"
-#include "sync_protocol.hh"
+#include "memory_model.hh"
 #include "overloaded.hh"
 
 namespace gitmem {
@@ -44,20 +44,20 @@ static std::optional<SyncOperation> get_sync_operation(Node stmt) {
 }
 
 // Check if a statement is a scheduling point according to the protocol
-static bool is_syncing(const SyncProtocol& protocol, Node stmt) {
+static bool is_syncing(const MemoryModel& model, Node stmt) {
   if (auto op = get_sync_operation(stmt)) {
-    return protocol.is_scheduling_point(*op);
+    return model.is_scheduling_point(*op);
   }
   return false;
 }
 
-static bool is_syncing(const SyncProtocol& protocol, Thread &thread) {
+static bool is_syncing(const MemoryModel& model, Thread &thread) {
   // Can only be true if a thread hasn't terminated
   // Either it has executed all statements but not yet terminated (and may sync)
   // Or it is at a synchronisation node
   // The lazy eval here is important
   return !thread.terminated &&
-    ((thread.pc >= thread.block->size()) || is_syncing(protocol, thread.block->at(thread.pc)));
+    ((thread.pc >= thread.block->size()) || is_syncing(model, thread.block->at(thread.pc)));
 }
 
 /* Evaluating an expression either returns the result of the expression or
@@ -79,7 +79,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
   } else if (e == lang::Var) {
     auto var = std::string(expr->location().view());
 
-    auto result = gctx.protocol->read(ctx, var);
+    auto result = gctx.model->read(ctx, var);
 
     return std::visit(overloaded{
       [&](std::monostate) -> std::variant<size_t, TerminationStatus> {
@@ -110,10 +110,10 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     return sum;
   } else if (e == lang::Spawn) {
     ThreadID child_tid = gctx.threads.size();
-    ThreadContext child_ctx(child_tid, gctx.protocol);
+    ThreadContext child_ctx(child_tid, gctx.model);
 
     if (std::optional<std::shared_ptr<ConflictBase>> conflict =
-            gctx.protocol->on_spawn(ctx, child_ctx)) {
+            gctx.model->on_spawn(ctx, child_ctx)) {
       throw std::logic_error("This code path should never be reached");
     }
 
@@ -192,7 +192,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       } else if (lhs == lang::Var) {
 
         auto write_event = thread.trace.on_write(var, *val);
-        gctx.protocol->write(ctx, var
+        gctx.model->write(ctx, var
         , ValueWithSource{*val, write_event});
       } else {
         throw std::runtime_error("Bad left-hand side: " +
@@ -227,7 +227,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     auto &joinee = gctx.threads[result];
     if (joinee.terminated &&
         std::holds_alternative<termination::Completed>(*joinee.terminated)) {
-      if (auto conflict = gctx.protocol->on_join(ctx, joinee.ctx)) {
+      if (auto conflict = gctx.model->on_join(ctx, joinee.ctx)) {
         verbose::out << (**conflict) << std::endl;
         thread.trace.on_join(result, *conflict);
         return termination::DataRace(*conflict);
@@ -255,7 +255,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     lock.owner = thread.tid;
 
-    if (auto conflict = gctx.protocol->on_lock(ctx, lock)) {
+    if (auto conflict = gctx.model->on_lock(ctx, lock)) {
       verbose::out << (**conflict) << std::endl;
       thread.trace.on_lock(var, lock.last_unlock_event, *conflict);
       return termination::DataRace(*conflict);
@@ -279,7 +279,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
       return termination::UnlockError(var);
     }
 
-    if (auto conflict = gctx.protocol->on_unlock(ctx, lock)) {
+    if (auto conflict = gctx.model->on_unlock(ctx, lock)) {
       verbose::out << (**conflict) << std::endl;
       thread.trace.on_unlock(var, *conflict);
       return termination::DataRace(*conflict);
@@ -331,7 +331,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
 
   // Initial sync when thread starts executing
   if (pc == 0) {
-    gctx.protocol->on_start(ctx);
+    gctx.model->on_start(ctx);
     thread.trace.on_start();
   }
 
@@ -341,7 +341,7 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
     Node stmt = block->at(pc);
 
     // Stop *before* executing a sync statement (except first)
-    if (made_progress && is_syncing(*gctx.protocol, stmt))
+    if (made_progress && is_syncing(*gctx.model, stmt))
       return ProgressStatus::progress;
 
     auto result = run_statement(stmt, thread);
@@ -363,11 +363,11 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
   }
 
   // If we ran *any* statements, finishing is a sync point for next iteration
-  if (made_progress && gctx.protocol->is_scheduling_point(SyncOperation::End))
+  if (made_progress && gctx.model->is_scheduling_point(SyncOperation::End))
     return ProgressStatus::progress;
 
   // Otherwise, we truly reached the end this iteration
-  if (auto conflict = gctx.protocol->on_end(ctx)) {
+  if (auto conflict = gctx.model->on_end(ctx)) {
     verbose::out << (**conflict) << std::endl;
     TerminationStatus term = termination::DataRace(*conflict);
     thread.terminated = term;
@@ -396,7 +396,7 @@ Interpreter::progress_thread(Thread& thread) {
     // If there are new threads, we can run them to sync as well
     any_progress = true;
     auto& new_thread = gctx.threads[i];
-    if (!is_syncing(*gctx.protocol, new_thread)) {
+    if (!is_syncing(*gctx.model, new_thread)) {
       verbose::out << "==== Thread " << i << " (spawn) ====" << std::endl;
       progress_thread(new_thread);
     }
@@ -516,7 +516,7 @@ void Interpreter::print_revision_graph(const std::filesystem::path& output_path)
     thread_state_ptrs.push_back(thread.ctx.sync.get());
   }
 
-  std::string dot = gctx.protocol->build_revision_graph_dot(thread_state_ptrs);
+  std::string dot = gctx.model->build_revision_graph_dot(thread_state_ptrs);
   if (!dot.empty()) {
     // Write to file
     auto dot_file = output_path.parent_path() / (output_path.stem().string() + "_revision_graph.dot");
@@ -702,8 +702,8 @@ void Interpreter::print_execution_graph(const std::filesystem::path& output_path
 }
 
 int interpret(const Node ast, const std::filesystem::path &output_path,
-              std::unique_ptr<SyncProtocol> protocol) {
-  Interpreter interp(GlobalContext(ast, std::move(protocol)));
+              std::unique_ptr<MemoryModel> model) {
+  Interpreter interp(GlobalContext(ast, std::move(model)));
   int result = interp.run();
 
   interp.print_execution_graph(output_path);

@@ -11,23 +11,18 @@ using namespace trieste::detail;
 Parse parser() {
   Parse p(depth::file, parser_wf);
   auto infix = [](Make &m, Token t) {
-    // This precedence table maps infix operators to the operators that have
-    // *higher* precedence, and which should therefore be terminated when that
-    // operator is encountered. Note that operators with the same precedence
-    // terminate each other. (for reasons, it has to be defined inside the
-    // lambda)
-    const auto precedence_table = std::map<Token, std::initializer_list<Token>>{
-        {Add, {}},
-        {Eq, {Add}},
-        {Neq, {Add}},
-        {Assign, {Add, Eq, Neq}},
+      // Precedence: operators with higher precedence are listed as the skip set,
+      // meaning they are terminated when this operator is encountered. Operators
+      // with the same precedence terminate each other.
+      if (t == Add)
+        m.seq(t);
+      else if (t == Eq || t == Neq)
+        m.seq(t, {Add});
+      else if (t == Assign)
+        m.seq(t, {Add, Eq, Neq});
+      // Push group to be able to check whether an operand follows
+      m.push(Group);
     };
-
-    auto skip = precedence_table.at(t);
-    m.seq(t, skip);
-    // Push group to be able to check whether an operand follows
-    m.push(Group);
-  };
 
   /*
       auto pair_with = [pop_until](Make &m, Token preceding, Token following) {

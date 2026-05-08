@@ -1,12 +1,12 @@
 #include <regex>
 
 #include "execution_state.hh"
-#include "sync_protocol.hh"
+#include "memory_model.hh"
 
 namespace gitmem {
 
-ThreadContext::ThreadContext(ThreadID tid, std::unique_ptr<SyncProtocol>& protocol) {
-  sync = protocol->make_thread_state(tid);
+ThreadContext::ThreadContext(ThreadID tid, std::unique_ptr<MemoryModel>& model) {
+  sync = model->make_thread_state(tid);
 }
 
 bool ThreadContext::operator==(const ThreadContext &other) const {
@@ -26,13 +26,13 @@ bool Thread::operator==(const Thread &other) const {
 }
 
 GlobalContext::GlobalContext(const trieste::Node &ast,
-                             std::unique_ptr<SyncProtocol> protocol)
-    : protocol(std::move(protocol)) {
+                             std::unique_ptr<MemoryModel> model)
+    : model(std::move(model)) {
   trieste::Node starting_block = ast / lang::File / lang::Block;
 
   ThreadID main_tid = 0;
 
-  ThreadContext starting_ctx(main_tid, this->protocol);
+  ThreadContext starting_ctx(main_tid, this->model);
 
   this->threads.emplace_back(main_tid, std::move(starting_ctx), starting_block);
 }
@@ -49,7 +49,7 @@ Lock& GlobalContext::get_lock(std::string lock) {
     Lock{
         .owner = std::nullopt,
         .last_unlock_event = nullptr,
-        .sync = protocol->make_lock_state()
+        .sync = model->make_lock_state()
     }
   );
 
@@ -163,7 +163,7 @@ void show_lock(const std::string &lock_name, const struct Lock &lock) {
 }
 
 void GlobalContext::print(std::ostream& os, bool show_all) const {
-  os << *protocol << std::endl;
+  os << *model << std::endl;
 
   bool showed_any = false;
   for (size_t i = 0; i < threads.size(); i++) {

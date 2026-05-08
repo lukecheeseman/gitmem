@@ -1,7 +1,7 @@
-#include "base_sync_protocol.hh"
+#include "base_memory_model.hh"
 #include "overloaded.hh"
-#include "branching/eager/sync_protocol.hh"
-#include "branching/lazy/sync_protocol.hh"
+#include "branching/eager/memory_model.hh"
+#include "branching/lazy/memory_model.hh"
 
 namespace gitmem {
 
@@ -16,17 +16,16 @@ LockState& get_store(Lock& ctx) {
 }
 
 // --------------------
-// BranchingSyncProtocolBase
+// BranchingMemoryModelBase
 // --------------------
 
-BranchingSyncProtocolBase::~BranchingSyncProtocolBase() = default;
+BranchingMemoryModelBase::~BranchingMemoryModelBase() = default;
 
-std::ostream &BranchingSyncProtocolBase::print(std::ostream &os) const {
-  os << _global_store;
+std::ostream &BranchingMemoryModelBase::print(std::ostream &os) const {
   return os;
 }
 
-ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
+ReadResult BranchingMemoryModelBase::read(ThreadContext &ctx,
                                            const std::string &var) {
   auto& store = get_store(ctx);
 
@@ -42,14 +41,14 @@ ReadResult BranchingSyncProtocolBase::read(ThreadContext &ctx,
   }, store.read(var));
 }
 
-void BranchingSyncProtocolBase::write(ThreadContext &ctx, const std::string &var,
+void BranchingMemoryModelBase::write(ThreadContext &ctx, const std::string &var,
                                   ValueWithSource value) {
   auto& store = get_store(ctx);
   store.stage(var, value);
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_spawn(ThreadContext &parent, ThreadContext &child) {
+BranchingMemoryModelBase::on_spawn(ThreadContext &parent, ThreadContext &child) {
   auto& parent_store = get_store(parent);
   parent_store.commit_staging();
 
@@ -61,7 +60,7 @@ BranchingSyncProtocolBase::on_spawn(ThreadContext &parent, ThreadContext &child)
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee) {
+BranchingMemoryModelBase::on_join(ThreadContext &joiner, ThreadContext &joinee) {
   auto& joiner_store = get_store(joiner);
   auto& joinee_store = get_store(joinee);
 
@@ -79,13 +78,13 @@ BranchingSyncProtocolBase::on_join(ThreadContext &joiner, ThreadContext &joinee)
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_start(ThreadContext &thread) {
+BranchingMemoryModelBase::on_start(ThreadContext &thread) {
   // nothing to do, the thread will have inhereted the parent commit on spawn
   return std::nullopt;
 };
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_end(ThreadContext &thread) {
+BranchingMemoryModelBase::on_end(ThreadContext &thread) {
   auto& store = get_store(thread);
   store.commit_staging();
 
@@ -93,7 +92,7 @@ BranchingSyncProtocolBase::on_end(ThreadContext &thread) {
 };
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock) {
+BranchingMemoryModelBase::on_lock(ThreadContext &thread, Lock &lock) {
   auto& store = get_store(thread);
   store.commit_staging();
 
@@ -115,7 +114,7 @@ BranchingSyncProtocolBase::on_lock(ThreadContext &thread, Lock &lock) {
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
+BranchingMemoryModelBase::on_unlock(ThreadContext &thread, Lock &lock) {
   auto& store = get_store(thread);
   store.commit_staging();
 
@@ -127,7 +126,7 @@ BranchingSyncProtocolBase::on_unlock(ThreadContext &thread, Lock &lock) {
   return std::nullopt;
 }
 
-std::string BranchingSyncProtocolBase::build_revision_graph_dot(
+std::string BranchingMemoryModelBase::build_revision_graph_dot(
     const std::vector<const ThreadSyncState*>& thread_states) const {
 
   std::vector<std::shared_ptr<const Commit>> heads;
@@ -142,7 +141,7 @@ std::string BranchingSyncProtocolBase::build_revision_graph_dot(
   return build_commit_graph_dot(heads);
 }
 
-bool BranchingSyncProtocolBase::is_scheduling_point(SyncOperation op) const {
+bool BranchingMemoryModelBase::is_scheduling_point(SyncOperation op) const {
   // For branching protocol, only operations that actually synchronize state
   // (lock/unlock) or require waiting (join) are scheduling points
   switch (op) {

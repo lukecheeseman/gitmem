@@ -1,7 +1,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "sync_protocol.hh"
+#include "memory_model.hh"
 #include "version_store.hh"
 #include "thread_trace.hh"
 #include "read_result.hh"

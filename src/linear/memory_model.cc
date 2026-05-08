@@ -1,4 +1,4 @@
-#include "linear/sync_protocol.hh"
+#include "linear/memory_model.hh"
 #include "debug.hh"
 #include <iostream>
 #include <sstream>
@@ -13,15 +13,15 @@ LocalVersionStore& get_store(ThreadContext& ctx) {
 }
 
 // --------------------
-// LinearSyncProtocol
+// LinearMemoryModel
 // --------------------
 
-std::ostream &LinearSyncProtocol::print(std::ostream &os) const {
+std::ostream &LinearMemoryModel::print(std::ostream &os) const {
   os << _global_store << std::endl;
   return os;
 }
 
-std::string LinearSyncProtocol::build_revision_graph_dot(
+std::string LinearMemoryModel::build_revision_graph_dot(
     const std::vector<const ThreadSyncState*>& thread_states) const {
 
   std::ostringstream dot;
@@ -70,7 +70,7 @@ std::string LinearSyncProtocol::build_revision_graph_dot(
 }
 
 std::optional<LinearConflict>
-LinearSyncProtocol::push(LocalVersionStore &local) {
+LinearMemoryModel::push(LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.timestamp(),
                                                     local.staged_changes())) {
 
@@ -88,7 +88,7 @@ LinearSyncProtocol::push(LocalVersionStore &local) {
 }
 
 std::optional<LinearConflict>
-LinearSyncProtocol::pull(LocalVersionStore &local) {
+LinearMemoryModel::pull(LocalVersionStore &local) {
   if (auto conflict = _global_store.check_conflicts(local.timestamp(),
                                                     local.staged_changes())) {
 
@@ -101,9 +101,9 @@ LinearSyncProtocol::pull(LocalVersionStore &local) {
   return std::nullopt;
 }
 
-LinearSyncProtocol::~LinearSyncProtocol() = default;
+LinearMemoryModel::~LinearMemoryModel() = default;
 
-ReadResult LinearSyncProtocol::read(ThreadContext &ctx,
+ReadResult LinearMemoryModel::read(ThreadContext &ctx,
                                                const std::string &var) {
   auto& store = get_store(ctx);
 
@@ -120,7 +120,7 @@ ReadResult LinearSyncProtocol::read(ThreadContext &ctx,
   return std::monostate{};
 }
 
-void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
+void LinearMemoryModel::write(ThreadContext &ctx, const std::string &var,
                                ValueWithSource value) {
   // write into the staging area of the thread
   auto& store = get_store(ctx);
@@ -128,7 +128,7 @@ void LinearSyncProtocol::write(ThreadContext &ctx, const std::string &var,
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
+LinearMemoryModel::on_spawn(ThreadContext &parent, ThreadContext &child) {
   // push parent to global history
   auto& store = get_store(parent);
   if (auto conflict = push(store))
@@ -144,7 +144,7 @@ LinearSyncProtocol::on_spawn(ThreadContext &parent, ThreadContext &child) {
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee) {
+LinearMemoryModel::on_join(ThreadContext &joiner, ThreadContext &joinee) {
   // we assume the joinee has already terminated and pushed
 
   // pull changes into parent
@@ -156,7 +156,7 @@ LinearSyncProtocol::on_join(ThreadContext &joiner, ThreadContext &joinee) {
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_start(ThreadContext &thread) {
+LinearMemoryModel::on_start(ThreadContext &thread) {
   // pull state from global history
   auto& store = get_store(thread);
   auto conflict = pull(store);
@@ -166,7 +166,7 @@ LinearSyncProtocol::on_start(ThreadContext &thread) {
 };
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_end(ThreadContext &thread) {
+LinearMemoryModel::on_end(ThreadContext &thread) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))
@@ -176,7 +176,7 @@ LinearSyncProtocol::on_end(ThreadContext &thread) {
 };
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock) {
+LinearMemoryModel::on_lock(ThreadContext &thread, Lock &lock) {
 
   auto& store = get_store(thread);
   if (auto conflict = pull(store))
@@ -186,7 +186,7 @@ LinearSyncProtocol::on_lock(ThreadContext &thread, Lock &lock) {
 }
 
 std::optional<std::shared_ptr<ConflictBase>>
-LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &) {
+LinearMemoryModel::on_unlock(ThreadContext &thread, Lock &) {
   // push changes to global history
   auto& store = get_store(thread);
   if (auto conflict = push(store))
@@ -195,7 +195,7 @@ LinearSyncProtocol::on_unlock(ThreadContext &thread, Lock &) {
   return std::nullopt;
 }
 
-bool LinearSyncProtocol::is_scheduling_point(SyncOperation op) const {
+bool LinearMemoryModel::is_scheduling_point(SyncOperation op) const {
   switch (op) {
     case SyncOperation::Lock:
     case SyncOperation::Unlock:

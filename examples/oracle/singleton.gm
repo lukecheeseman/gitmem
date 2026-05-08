@@ -14,42 +14,28 @@
 //  2a.   Otherwise the variable was initialised and we can read the value
 //  3.    Check that in all code paths we read the expected initialised value
 
-x = 0;
+instance = 0;
 
 $t1 = spawn {
-  $y = 0;
-  if (x == 0) {
+  if (instance == 0) {
     lock l;
-    if (x == 0) {
-      $y = 1;
-      x = $y;
-    } else {
-      $y = x;
+    if (instance == 0) {
+      instance = 100;
     }
     unlock l;
-  } else {
-    $y = x;
   }
-  assert($y == 1);
+  assert(instance == 100);
 };
 
-$t2 = spawn {
-  $y = 0;
-  if (x == 0) {
-    lock l;
-    if (x == 0) {
-      $y = 1;
-      x = $y;
-    } else {
-      $y = x;
-    }
-    unlock l;
-  } else {
-    $y = x;
+
+if (instance == 0) {
+  lock l;
+  if (instance == 0) {
+    instance = 100;
   }
-  assert($y == 1);
-};
+  unlock l;
+}
+assert(instance == 100);
 
 join $t1;
-join $t2;
-assert(x == 1);
+assert(instance == 100);

@@ -12,7 +12,7 @@ namespace gitmem {
 struct Event;  // Forward declaration
 
 // Forward declaration for builder
-class SyncProtocolBuilder;
+class MemoryModelBuilder;
 
 // Types of synchronization operations that may be scheduling points
 enum class SyncOperation {
@@ -24,12 +24,9 @@ enum class SyncOperation {
   Unlock
 };
 
-class SyncProtocol {
+class MemoryModel {
 public:
-  virtual ~SyncProtocol() = default;
-
-  // Create a fresh copy of this protocol with reset state
-  virtual std::unique_ptr<SyncProtocol> clone() const = 0;
+  virtual ~MemoryModel() = default;
 
   virtual std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const = 0;
   virtual std::unique_ptr<LockSyncState> make_lock_state() const = 0;
@@ -67,8 +64,8 @@ public:
 
   virtual std::ostream &print(std::ostream &os) const = 0;
   friend std::ostream &operator<<(std::ostream &os,
-                                  const SyncProtocol &protocol) {
-    return protocol.print(os);
+                                  const MemoryModel &model) {
+    return model.print(os);
   }
 };
 

@@ -1,31 +1,28 @@
 #pragma once
 
-#include "../sync_protocol.hh"
-#include "base_version_store.hh"
+#include "../memory_model.hh"
+#include "conflict.hh"
+#include "execution_state.hh"
+#include "linear/version_store.hh"
 
 namespace gitmem {
 
-using BranchingConflict = Conflict<branching::Timestamp>;
+using LinearConflict = Conflict<linear::Timestamp>;
 
-namespace branching {
+namespace linear {
 
-class BranchingSyncProtocolBase : public SyncProtocol {
-protected:
+class LinearMemoryModel final : public MemoryModel {
   GlobalVersionStore _global_store;
-  bool verbose_commits;
 
-  explicit BranchingSyncProtocolBase(bool verbose_commits)
-    : verbose_commits(verbose_commits) {}
+  std::optional<LinearConflict> push(LocalVersionStore &local);
+  std::optional<LinearConflict> pull(LocalVersionStore &local);
 
 public:
-  ~BranchingSyncProtocolBase() override;
-
-  std::unique_ptr<SyncProtocol> clone() const override = 0;
+  ~LinearMemoryModel() override;
 
   ReadResult read(ThreadContext &ctx, const std::string &var) override;
 
-  void write(ThreadContext &ctx, const std::string &var,
-             ValueWithSource value) override;
+  void write(ThreadContext &ctx, const std::string &var, ValueWithSource value) override;
 
   std::optional<std::shared_ptr<ConflictBase>>
   on_spawn(ThreadContext &parent, ThreadContext &child) override;
@@ -51,11 +48,15 @@ public:
 
   bool is_scheduling_point(SyncOperation op) const override;
 
+  std::unique_ptr<ThreadSyncState> make_thread_state(ThreadID tid) const override {
+    return std::make_unique<LocalVersionStore>(tid);
+  }
+
   std::unique_ptr<LockSyncState> make_lock_state() const override {
-    return std::make_unique<LockState>();
+    return nullptr;
   }
 };
 
-} // end branching
+} // namespace linear
 
-} // end gitmem
+} // namespace gitmem

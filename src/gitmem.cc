@@ -5,10 +5,10 @@
 #include "model_checker.hh"
 #include "debugger.hh"
 #include "lang.hh"
-#include "linear/sync_protocol.hh"
-#include "branching/base_sync_protocol.hh"
-#include "branching/eager/sync_protocol.hh"
-#include "branching/lazy/sync_protocol.hh"
+#include "linear/memory_model.hh"
+#include "branching/base_memory_model.hh"
+#include "branching/eager/memory_model.hh"
+#include "branching/lazy/memory_model.hh"
 
 int main(int argc, char **argv) {
   using namespace trieste;
@@ -26,8 +26,8 @@ int main(int argc, char **argv) {
   app.add_flag("-v,--verbose", verbose,
                "Enable verbose output from the interpreter.");
 
-  std::string sync_protocol = "linear";
-  auto sync_opt = app.add_option("--sync", sync_protocol, "Select a sync protocol for execution (default: linear)")
+  std::string sync_model = "linear";
+  auto sync_opt = app.add_option("--sync", sync_model, "Select a memory model for execution (default: linear)")
     ->check(CLI::IsMember({"linear", "branching"}))
     ->type_name("KIND");
 
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
 
   bool include_empty_commits = false;
   auto include_empty_opt = app.add_flag("--include-empty-commits", include_empty_commits,
-               "Include empty commits in branching protocol output (branching mode only).");
+               "Include empty commits in branching memory model output (branching mode only.).");
 
   bool raise_early_conflicts = false;
   auto raise_early_opt = app.add_flag("--raise-early-conflicts", raise_early_conflicts,
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     app.parse(argc, argv);
 
     // Additional validation for logical consistency
-    if (sync_protocol == "linear") {
+    if (sync_model == "linear") {
       if (*branching_mode_opt) {
         std::cerr << "Error: --branching-mode is only valid with --sync branching" << std::endl;
         return 1;
@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (sync_protocol == "branching" && branching_mode == "eager" && raise_early_conflicts) {
+    if (sync_model == "branching" && branching_mode == "eager" && raise_early_conflicts) {
       std::cerr << "Error: --raise-early-conflicts is only valid with --branching-mode lazy" << std::endl;
       return 1;
     }
@@ -108,29 +108,32 @@ int main(int argc, char **argv) {
 
     gitmem::verbose::out << "Output will be written to " << output_path << std::endl;
 
-    // Build protocol based on command line options
-    std::unique_ptr<gitmem::SyncProtocol> protocol;
-    if (sync_protocol == "linear") {
-      protocol = std::make_unique<gitmem::linear::LinearSyncProtocol>();
-    } else if (sync_protocol == "branching") {
+    // Build memory models on demand so each execution path gets a fresh instance.
+    auto make_model = [&]() -> std::unique_ptr<gitmem::MemoryModel> {
+      if (sync_model == "linear") {
+        return std::make_unique<gitmem::linear::LinearMemoryModel>();
+      }
+
       if (branching_mode == "eager") {
-        protocol = std::make_unique<gitmem::branching::BranchingEagerSyncProtocol>(include_empty_commits);
-      } else { // lazy
-        protocol = std::make_unique<gitmem::branching::BranchingLazySyncProtocol>(
-          include_empty_commits,
-          raise_early_conflicts
+        return std::make_unique<gitmem::branching::BranchingEagerMemoryModel>(
+          include_empty_commits
         );
       }
-    }
+
+      return std::make_unique<gitmem::branching::BranchingLazyMemoryModel>(
+        include_empty_commits,
+        raise_early_conflicts
+      );
+    };
 
     int exit_status;
     wf::push_back(gitmem::lang::wf);
     if (model_check) {
-      exit_status = gitmem::model_check(result.ast, output_path, std::move(protocol));
+      exit_status = gitmem::model_check(result.ast, output_path, make_model);
     } else if (interactive) {
-      exit_status = gitmem::interpret_interactive(result.ast, output_path, std::move(protocol));
+      exit_status = gitmem::interpret_interactive(result.ast, output_path, make_model());
     } else {
-      exit_status = gitmem::interpret(result.ast, output_path, std::move(protocol));
+      exit_status = gitmem::interpret(result.ast, output_path, make_model());
     }
     wf::pop_front();
 
