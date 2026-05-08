@@ -209,8 +209,8 @@ void do_finish(Interpreter& interp, bool print_graphs, const std::filesystem::pa
 /** Print interactive command help */
 void print_help() {
     std::cout << "Commands:\n";
-    std::cout << "s [tid] - Step to next sync point in thread\n";
-    std::cout << "[tid]   - Step to next sync point in thread\n";
+    std::cout << "s <tid> - Step to next sync point in thread\n";
+    std::cout << "<tid>   - Step to next sync point in thread\n";
     std::cout << "f      - Finish the program\n";
     std::cout << "r      - Restart the program\n";
     std::cout << "l      - List all threads\n";
