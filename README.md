@@ -125,7 +125,9 @@ Gitmem supports different memory models:
 ```bash
 ./gitmem --sync linear program.gm
 ```
-Traditional sequential consistency model.
+Multi-version concurrency control like consistency model.
+Threads operate in isolation and synchronisation pulls from and pushes to a global shared version history.
+Each variable is versioned throughout its history.
 
 #### Branching (Eager)
 ```bash

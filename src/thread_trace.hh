@@ -5,6 +5,15 @@
 #include "overloaded.hh"
 #include "read_result.hh"
 
+#include <ostream>
+#include <sstream>
+#include <variant>
+#include <vector>
+#include <memory>
+#include <string>
+#include <functional>
+#include <algorithm>
+
 namespace gitmem {
 
 struct Event;
