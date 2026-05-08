@@ -9,6 +9,8 @@
 
 namespace gitmem {
 
+using MemoryModelFactory = std::function<std::unique_ptr<MemoryModel>()>;
+
 struct Event;  // Forward declaration
 
 // Forward declaration for builder

@@ -184,8 +184,9 @@ StepUIResult do_step(Interpreter &interp,
 void do_restart(Interpreter &interp,
                 const trieste::Node ast,
                 bool print_graphs,
-                const std::filesystem::path &output_file) {
-    interp = Interpreter(GlobalContext(ast, interp.context().model->clone()));
+                const std::filesystem::path &output_file,
+                const MemoryModelFactory& make_model) {
+    interp = Interpreter(GlobalContext(ast, make_model()));
     maybe_print_graph(interp, print_graphs, output_file);
 }
 
@@ -226,8 +227,8 @@ void print_help() {
 /** Main interactive interpreter loop */
 int interpret_interactive(const trieste::Node ast,
                           const std::filesystem::path &output_file,
-                          std::unique_ptr<MemoryModel> model) {
-    Interpreter interp(GlobalContext(ast, std::move(model)));
+                          const MemoryModelFactory& make_model) {
+    Interpreter interp(GlobalContext(ast, make_model()));
     GlobalContext &gctx = interp.context();
 
     size_t prev_no_threads = 1;
@@ -265,7 +266,7 @@ int interpret_interactive(const trieste::Node ast,
                 break;
 
             case Command::Restart:
-                do_restart(interp, ast, print_graphs, output_file);
+                do_restart(interp, ast, print_graphs, output_file, make_model);
                 command = {Command::List};
                 break;
 

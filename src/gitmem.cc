@@ -131,9 +131,9 @@ int main(int argc, char **argv) {
     if (model_check) {
       exit_status = gitmem::model_check(result.ast, output_path, make_model);
     } else if (interactive) {
-      exit_status = gitmem::interpret_interactive(result.ast, output_path, make_model());
+      exit_status = gitmem::interpret_interactive(result.ast, output_path, make_model);
     } else {
-      exit_status = gitmem::interpret(result.ast, output_path, make_model());
+      exit_status = gitmem::interpret(result.ast, output_path, make_model);
     }
     wf::pop_front();
 

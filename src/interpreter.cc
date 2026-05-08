@@ -702,8 +702,8 @@ void Interpreter::print_execution_graph(const std::filesystem::path& output_path
 }
 
 int interpret(const Node ast, const std::filesystem::path &output_path,
-              std::unique_ptr<MemoryModel> model) {
-  Interpreter interp(GlobalContext(ast, std::move(model)));
+              const MemoryModelFactory& make_model) {
+  Interpreter interp(GlobalContext(ast, make_model()));
   int result = interp.run();
 
   interp.print_execution_graph(output_path);
