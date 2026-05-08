@@ -35,13 +35,22 @@ private:
 public:
   Interpreter(GlobalContext gctx): gctx(std::move(gctx)) {}
 
-  GlobalContext& context() { return gctx; }
-
   int run();
+
+  size_t thread_count() const;
+  bool has_thread(ThreadID tid) const;
+  bool thread_terminated(ThreadID tid) const;
+  bool all_threads_completed() const;
+  bool any_thread_crashed() const;
+  std::optional<TerminationStatus> thread_termination(ThreadID tid) const;
+  std::optional<std::string> pending_statement(ThreadID tid) const;
+  bool same_state_as(const GlobalContext& other) const;
+  GlobalContext take_context();
 
   StepResult<size_t> evaluate_expression(trieste::Node, Thread&);
   StepResult<int> run_statement(trieste::Node, Thread&);
 
+  StepResult<ProgressStatus> progress_thread(ThreadID tid);
   StepResult<ProgressStatus> progress_thread(Thread&);
   StepResult<ProgressStatus> run_single_thread_to_sync(Thread&);
   StepResult<ProgressStatus> run_threads_to_sync();

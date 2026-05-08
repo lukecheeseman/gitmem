@@ -115,27 +115,22 @@ struct StepUIResult {
 };
 
 StepUIResult step_thread(Interpreter& interp, ThreadID tid) {
-  GlobalContext& gctx = interp.context();
-
-  if (tid >= gctx.threads.size()) {
+  if (!interp.has_thread(tid)) {
     return StepUIResult::invalid(
         "Invalid thread id: " + std::to_string(tid));
   }
 
-  auto& thread = gctx.threads[tid];
-
-  if (thread.terminated) {
-    StepUIResult::terminated(*thread.terminated);
+  if (auto term = interp.thread_termination(tid)) {
+    return StepUIResult::terminated(*term);
   }
 
-  auto prog_or_term = interp.progress_thread(gctx.threads[tid]);
+  auto prog_or_term = interp.progress_thread(tid);
 
   if (auto prog = std::get_if<ProgressStatus>(&prog_or_term)) {
     if (*prog == ProgressStatus::no_progress) {
-      auto stmt = thread.block->at(thread.pc);
       return StepUIResult::blocked(
           "Thread " + std::to_string(tid) + " is blocking on '" +
-          std::string(stmt->location().view()) + "'");
+          interp.pending_statement(tid).value_or("...") + "'");
     }
     return StepUIResult::progressed();
   }
@@ -229,7 +224,6 @@ int interpret_interactive(const trieste::Node ast,
                           const std::filesystem::path &output_file,
                           const MemoryModelFactory& make_model) {
     Interpreter interp(GlobalContext(ast, make_model()));
-    GlobalContext &gctx = interp.context();
 
     size_t prev_no_threads = 1;
     Command command = {Command::List};
@@ -240,10 +234,10 @@ int interpret_interactive(const trieste::Node ast,
 
     while (command.cmd != Command::Quit) {
         // Print threads if new threads appeared or command is List
-        if (command.cmd != Command::Skip || prev_no_threads != gctx.threads.size()) {
+      if (command.cmd != Command::Skip || prev_no_threads != interp.thread_count()) {
             do_list(interp, command.cmd == Command::List);
         }
-        prev_no_threads = gctx.threads.size();
+      prev_no_threads = interp.thread_count();
 
         // Read user input
         std::cout << "> ";

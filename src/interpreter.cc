@@ -60,6 +60,55 @@ static bool is_syncing(const MemoryModel& model, Thread &thread) {
     ((thread.pc >= thread.block->size()) || is_syncing(model, thread.block->at(thread.pc)));
 }
 
+size_t Interpreter::thread_count() const {
+  return gctx.threads.size();
+}
+
+bool Interpreter::has_thread(ThreadID tid) const {
+  return tid < gctx.threads.size();
+}
+
+bool Interpreter::thread_terminated(ThreadID tid) const {
+  return gctx.threads.at(tid).terminated.has_value();
+}
+
+bool Interpreter::all_threads_completed() const {
+  return std::all_of(
+    gctx.threads.begin(), gctx.threads.end(), [](const auto& thread) {
+      return thread.terminated &&
+             std::holds_alternative<termination::Completed>(*thread.terminated);
+    });
+}
+
+bool Interpreter::any_thread_crashed() const {
+  return std::any_of(
+    gctx.threads.begin(), gctx.threads.end(), [](const auto& thread) {
+      return thread.terminated &&
+             !std::holds_alternative<termination::Completed>(*thread.terminated);
+    });
+}
+
+std::optional<TerminationStatus> Interpreter::thread_termination(ThreadID tid) const {
+  return gctx.threads.at(tid).terminated;
+}
+
+std::optional<std::string> Interpreter::pending_statement(ThreadID tid) const {
+  const auto& thread = gctx.threads.at(tid);
+  if (thread.pc >= thread.block->size()) {
+    return std::nullopt;
+  }
+
+  return std::string(thread.block->at(thread.pc)->location().view());
+}
+
+bool Interpreter::same_state_as(const GlobalContext& other) const {
+  return gctx == other;
+}
+
+GlobalContext Interpreter::take_context() {
+  return std::move(gctx);
+}
+
 /* Evaluating an expression either returns the result of the expression or
  * a the exceptional termination status of the thread.
  */
@@ -383,6 +432,11 @@ Interpreter::run_single_thread_to_sync(Thread& thread) {
  * Run a thread to the next sync point, including any threads spawned by that
  * thread
  */
+std::variant<ProgressStatus, TerminationStatus>
+Interpreter::progress_thread(ThreadID tid) {
+  return progress_thread(gctx.threads.at(tid));
+}
+
 std::variant<ProgressStatus, TerminationStatus>
 Interpreter::progress_thread(Thread& thread) {
   auto no_threads = gctx.threads.size();
