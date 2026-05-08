@@ -81,7 +81,7 @@ public:
   // Synchronisation semantics (policy)
   std::unique_ptr<MemoryModel> model;
 
-  GlobalContext(const trieste::Node &ast,
+  GlobalContext(trieste::Node starting_block,
                 std::unique_ptr<MemoryModel> model);
   ~GlobalContext();
 

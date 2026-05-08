@@ -47,7 +47,7 @@ struct AssertionFailure {
 struct UnassignedRead {
   std::string variable;
   friend std::ostream& operator<<(std::ostream& os, const UnassignedRead& u) {
-    os << "Read of unassigned variable '" << u.variable;
+    os << "Read of unassigned variable '" << u.variable << "'";
     return os;
   }
 };

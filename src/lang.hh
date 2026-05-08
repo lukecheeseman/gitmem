@@ -78,4 +78,8 @@ inline const auto Then = TokenDef("then");
 
 } // namespace lang
 
+inline trieste::Node entry_block(const trieste::Node& ast) {
+  return ast / lang::File / lang::Block;
+}
+
 } // namespace gitmem

@@ -60,6 +60,8 @@ build_output_path(const std::filesystem::path &output_path, const size_t idx) {
  */
 int model_check(const Node ast, const std::filesystem::path &output_path,
                 const MemoryModelFactory& make_model) {
+  Node starting_block = entry_block(ast);
+
   auto final_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto failing_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
   auto deadlocked_contexts = std::vector<std::shared_ptr<GlobalContext>>{};
@@ -73,7 +75,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path,
   auto current_trace = std::vector<size_t>{0}; // Start with the main thread
   verbose::out << "==== Thread " << cursor->tid_ << " ====" << std::endl;
 
-  Interpreter interp(GlobalContext(ast, make_model()));
+  Interpreter interp(GlobalContext(starting_block, make_model()));
   interp.progress_thread(cursor->tid_);
 
   while (!root->complete) {
@@ -154,7 +156,7 @@ int model_check(const Node ast, const std::filesystem::path &output_path,
     if (cursor->complete && !root->complete) {
       // Reset the cursor to the root and start a new trace with a fresh interpreter
       verbose::out << std::endl << "Restarting trace..." << std::endl;
-      interp = Interpreter(GlobalContext(ast, make_model()));
+      interp = Interpreter(GlobalContext(starting_block, make_model()));
 
       cursor = root;
       current_trace.clear();

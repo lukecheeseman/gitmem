@@ -25,11 +25,9 @@ bool Thread::operator==(const Thread &other) const {
           terminated == other.terminated;
 }
 
-GlobalContext::GlobalContext(const trieste::Node &ast,
+GlobalContext::GlobalContext(trieste::Node starting_block,
                              std::unique_ptr<MemoryModel> model)
     : model(std::move(model)) {
-  trieste::Node starting_block = ast / lang::File / lang::Block;
-
   ThreadID main_tid = 0;
 
   ThreadContext starting_ctx(main_tid, this->model);

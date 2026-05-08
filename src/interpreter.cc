@@ -757,7 +757,8 @@ void Interpreter::print_execution_graph(const std::filesystem::path& output_path
 
 int interpret(const Node ast, const std::filesystem::path &output_path,
               const MemoryModelFactory& make_model) {
-  Interpreter interp(GlobalContext(ast, make_model()));
+  Node starting_block = entry_block(ast);
+  Interpreter interp(GlobalContext(starting_block, make_model()));
   int result = interp.run();
 
   interp.print_execution_graph(output_path);

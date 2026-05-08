@@ -181,7 +181,8 @@ void do_restart(Interpreter &interp,
                 bool print_graphs,
                 const std::filesystem::path &output_file,
                 const MemoryModelFactory& make_model) {
-    interp = Interpreter(GlobalContext(ast, make_model()));
+  trieste::Node starting_block = entry_block(ast);
+  interp = Interpreter(GlobalContext(starting_block, make_model()));
     maybe_print_graph(interp, print_graphs, output_file);
 }
 
@@ -223,7 +224,8 @@ void print_help() {
 int interpret_interactive(const trieste::Node ast,
                           const std::filesystem::path &output_file,
                           const MemoryModelFactory& make_model) {
-    Interpreter interp(GlobalContext(ast, make_model()));
+  trieste::Node starting_block = entry_block(ast);
+  Interpreter interp(GlobalContext(starting_block, make_model()));
 
     size_t prev_no_threads = 1;
     Command command = {Command::List};
