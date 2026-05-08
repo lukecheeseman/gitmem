@@ -137,7 +137,7 @@ Git-like branching semantics where threads create branches that merge at synchro
 ```bash
 ./gitmem --sync branching --branching-mode lazy program.gm
 ```
-Lazy conflict detection variant that defers checking until synchronization.
+Lazy conflict detection variant that defers checking until variables are read.
 
 Additional flags:
 - `--include-empty-commits` - Include empty commits in branching output

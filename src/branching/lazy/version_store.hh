@@ -10,6 +10,11 @@ class LazyLocalVersionStore : public LocalVersionStore {
 private:
   bool raise_early_conflicts;
 
+  // Cache committed read resolution for the current head.
+  // When head changes, cache is invalidated lazily in get_committed.
+  mutable std::shared_ptr<const Commit> cached_head;
+  mutable std::unordered_map<std::string, BranchingReadResult> read_cache;
+
 public:
   ~LazyLocalVersionStore() = default;
 

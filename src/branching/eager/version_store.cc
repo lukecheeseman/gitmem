@@ -14,10 +14,13 @@ bool traverse_until_lca(
   std::unordered_set<std::shared_ptr<const Commit>>& visited,
   std::unordered_map<std::shared_ptr<const Commit>, bool>& reach_memo)
 {
-  if (!commit || commit == lca || !visited.insert(commit).second)
+  if (!commit || !visited.insert(commit).second)
     return true;
 
-  if (!can_reach(commit, lca, reach_memo))
+  if (lca && commit == lca)
+    return true;
+
+  if (lca && !can_reach(commit, lca, reach_memo))
     return true;
 
   for (const auto& [obj, _] : commit->changes) {
@@ -106,7 +109,10 @@ find_lowest_common_ancestor(std::shared_ptr<const Commit> a,
 
 std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::shared_ptr<const Commit>& commit) {
   assert(staging.empty());
-  assert(commit != nullptr);
+
+  // No incoming history to merge.
+  if (!commit)
+    return std::nullopt;
 
   // trivial case: same history
   if (head == commit)
@@ -114,7 +120,13 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
 
   // Find lowest common ancestor of the two heads
   std::shared_ptr<const Commit> lca = find_lowest_common_ancestor(head, commit);
-  verbose::out << "found lca of " << head->id << " and " << commit->id << " to be " << lca->id << std::endl;
+  verbose::out << "found lca of "
+               << (head ? to_string(head->id) : std::string("<null>"))
+               << " and "
+               << to_string(commit->id)
+               << " to be "
+               << (lca ? to_string(lca->id) : std::string("<null>"))
+               << std::endl;
 
   // Collect all writes after LCA for each branch
   std::unordered_map<std::string, std::shared_ptr<const Commit>> branch_a, branch_b;
