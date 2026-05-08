@@ -2,6 +2,7 @@
 #include <trieste/trieste.h>
 #include <variant>
 #include <fstream>
+#include <sstream>
 
 #include "debug.hh"
 #include "interpreter.hh"
@@ -240,9 +241,10 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
       } else if (lhs == lang::Var) {
 
-        auto write_event = thread.trace.on_write(var, *val);
-        gctx.model->write(ctx, var
-        , ValueWithSource{*val, write_event});
+        auto [line, col] = stmt->location().linecol();
+        FileLocation loc{stmt->location().source->origin(), line + 1, col + 1};
+        auto write_event = thread.trace.on_write(var, *val, std::move(loc));
+        gctx.model->write(ctx, var, ValueWithSource{*val, write_event});
       } else {
         throw std::runtime_error("Bad left-hand side: " +
                                  std::string(lhs->type().str()));
@@ -504,6 +506,29 @@ static bool is_finished(const StepResult<ProgressStatus>& r) {
          std::get<ProgressStatus>(r) == ProgressStatus::no_progress;
 }
 
+static std::string user_facing_termination(const TerminationStatus& term) {
+  return std::visit(overloaded{
+    [](const termination::Completed&) {
+      return std::string("Completed successfully");
+    },
+    [](const termination::DataRace& r) {
+      assert(r.conflict != nullptr);
+      auto locs = r.conflict->source_locations();
+      auto var = r.conflict->object_name();
+      std::string prefix = "Data race occurred";
+      if (!var.empty()) {
+        prefix += " on '" + var + "'";
+      }
+      return prefix + " at " + locs.first.str() + " and " + locs.second.str();
+    },
+    [](const auto& t) {
+      std::ostringstream oss;
+      oss << t;
+      return oss.str();
+    }
+  }, term);
+}
+
 /* Try to evaluate all threads until they have all terminated in some way
  * or we have reached a stuck configuration.
  */
@@ -520,26 +545,34 @@ int Interpreter::run() {
     auto &thread = gctx.threads[i];
 
     if (thread.terminated) {
-    verbose::out << "Thread " << i << ": ";
+      verbose::out << "Thread " << i << ": ";
 
-    std::visit(
-      overloaded{
-        [&](const termination::Completed &t) {
-          verbose::out << t << std::endl;
+      std::visit(
+        overloaded{
+          [&](const termination::Completed &t) {
+            verbose::out << t << std::endl;
+          },
+
+          [&](const auto &t) {
+            // Any non-completed termination is exceptional
+            verbose::out << t << std::endl;
+            if (verbose::out.enabled) {
+              std::cerr << "Error in thread " << i << ": " << t << std::endl;
+            } else {
+              std::cerr << "Error in thread " << i << ": "
+                        << user_facing_termination(*thread.terminated)
+                        << std::endl;
+            }
+            exception_detected = true;
+          }
         },
-
-        [&](const auto &t) {
-          // Any non-completed termination is exceptional
-          verbose::out << t << std::endl;
-          exception_detected = true;
-        }
-      },
-      *thread.terminated
-    );
+        *thread.terminated
+      );
     } else {
       exception_detected = true;
       thread.trace.on_end();
       verbose::out << "Thread " << i << " is stuck" << std::endl;
+      std::cerr << "error: thread " << i << " is stuck (possible deadlock)" << std::endl;
     }
   }
 

@@ -1,5 +1,6 @@
 #include "branching/eager/version_store.hh"
 #include "debug.hh"
+#include "thread_trace.hh"
 
 #include <unordered_set>
 
@@ -138,6 +139,16 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
   traverse_until_lca(commit, lca, branch_b, visited, reach_memo);
 
   // 1. Eager conflict detection
+  auto get_loc = [](const std::shared_ptr<const Commit>& c, const std::string& obj)
+      -> FileLocation {
+    auto it = c->changes.find(obj);
+    if (it == c->changes.end() || !it->second.source_event)
+      throw std::logic_error("missing source event for conflicting write");
+    auto* we = std::get_if<WriteEvent>(&it->second.source_event->data);
+    if (!we)
+      throw std::logic_error("conflicting source event is not a WriteEvent");
+    return we->location;
+  };
   std::optional<Conflict> conflict;
   for (const auto& [obj, commit_a] : branch_a) {
     auto it = branch_b.find(obj);
@@ -145,7 +156,9 @@ std::optional<Conflict> EagerLocalVersionStore::merge_with_commit(const std::sha
       conflict = Conflict{
         .obj = obj,
         .timestamp_a = commit_a->id,
-        .timestamp_b = it->second->id
+        .timestamp_b = it->second->id,
+        .location_a = get_loc(commit_a, obj),
+        .location_b = get_loc(it->second, obj),
       };
       break;
     }

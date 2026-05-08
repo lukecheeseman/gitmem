@@ -60,6 +60,8 @@ struct Conflict {
   std::string object;
   Timestamp local_base;
   Timestamp global_head;
+  FileLocation local_location;
+  FileLocation global_location;
 };
 
 // -----------------------------

@@ -75,7 +75,18 @@ GlobalVersionStore::get_version_for_timestamp(std::string obj,
 std::optional<Conflict> GlobalVersionStore::check_conflicts(
     uint64_t base,
     const std::unordered_map<std::string, ValueWithSource> &changes) const {
-  for (const auto &[obj, _] : changes) {
+  auto event_location = [](const ValueWithSource& value) -> FileLocation {
+    if (!value.source_event)
+      throw std::logic_error("missing source event for conflicting write");
+
+    auto* write = std::get_if<WriteEvent>(&value.source_event->data);
+    if (!write)
+      throw std::logic_error("conflicting source event is not a WriteEvent");
+
+    return write->location;
+  };
+
+  for (const auto &[obj, local_value] : changes) {
     auto it = _history.find(obj);
     if (it == _history.end()) {
       continue;
@@ -84,7 +95,11 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
     const Version &latest = it->second.back();
     if (latest.timestamp().counter > base) {
       return Conflict{
-          .object = obj, .local_base = base, .global_head = latest.timestamp()};
+          .object = obj,
+          .local_base = base,
+          .global_head = latest.timestamp(),
+          .local_location = event_location(local_value),
+          .global_location = event_location(latest.value())};
     }
   }
   return std::nullopt;

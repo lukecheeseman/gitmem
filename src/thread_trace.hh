@@ -22,7 +22,7 @@ struct StartEvent {};
 struct SpawnEvent { const ThreadID child_tid; };
 struct ReadValue { const size_t value; const std::shared_ptr<Event> source_event; };
 struct ReadEvent { const std::string var; std::variant<const ReadValue, std::shared_ptr<ConflictBase>> value_or_conflict; };
-struct WriteEvent { const std::string var; const size_t value; };
+struct WriteEvent { const std::string var; const size_t value; const FileLocation location; };
 struct LockEvent { std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; std::shared_ptr<Event> last_unlock_event; };
 struct UnlockEvent { const std::string lock_name; std::shared_ptr<ConflictBase> maybe_conflict; };
 struct JoinEvent { const ThreadID joinee_tid; std::shared_ptr<ConflictBase> maybe_conflict; };
@@ -74,7 +74,9 @@ inline std::ostream& operator<<(std::ostream& os, const ReadEvent& e) {
 }
 
 inline std::ostream& operator<<(std::ostream& os, const WriteEvent& e) {
-  return os << "WriteEvent(var=\"" << e.var << "\", value=" << e.value << ")";
+  os << "WriteEvent(var=\"" << e.var << "\", value=" << e.value;
+  os << ", at " << e.location.linecol();
+  return os << ")";
 }
 
 inline std::ostream& operator<<(std::ostream& os, const LockEvent& e) {
@@ -160,8 +162,9 @@ private:
     return append<ReadEvent>(std::move(text), conflict);
   }
 
-  std::shared_ptr<Event> on_write(const std::string text, const size_t value) {
-    return append<WriteEvent>(std::move(text), value);
+  std::shared_ptr<Event> on_write(const std::string text, const size_t value,
+                                  FileLocation location) {
+    return append<WriteEvent>(std::move(text), value, std::move(location));
   }
 
   std::shared_ptr<Event> on_lock(const std::string lock_name,

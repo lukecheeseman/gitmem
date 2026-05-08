@@ -1,5 +1,6 @@
 #include "branching/lazy/version_store.hh"
 #include "debug.hh"
+#include "thread_trace.hh"
 #include <unordered_set>
 #include <functional>
 
@@ -126,9 +127,23 @@ BranchingReadResult LazyLocalVersionStore::get_committed(std::string var) const 
   }
 
   // conflict
+  auto get_loc = [](const ValueWithSource& vws) -> FileLocation {
+    if (!vws.source_event)
+      throw std::logic_error("missing source event for conflicting write");
+    auto* we = std::get_if<WriteEvent>(&vws.source_event->data);
+    if (!we)
+      throw std::logic_error("conflicting source event is not a WriteEvent");
+    return we->location;
+  };
   auto a = writers[0]->id;
   auto b = writers[1]->id;
-  auto result = BranchingReadResult(Conflict(var, a, b));
+  auto result = BranchingReadResult(Conflict{
+    .obj = var,
+    .timestamp_a = a,
+    .timestamp_b = b,
+    .location_a = get_loc(writers[0]->changes.at(var)),
+    .location_b = get_loc(writers[1]->changes.at(var)),
+  });
   read_cache[var] = result;
   return result;
 }

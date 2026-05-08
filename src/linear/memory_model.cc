@@ -76,7 +76,10 @@ LinearMemoryModel::push(LocalVersionStore &local) {
 
     return std::make_optional<LinearConflict>(
         conflict->object,
-        std::make_pair(conflict->local_base, conflict->global_head));
+      conflict->local_base,
+      conflict->global_head,
+      conflict->local_location,
+      conflict->global_location);
   }
 
   uint64_t new_base = _global_store.apply_changes(
@@ -94,7 +97,10 @@ LinearMemoryModel::pull(LocalVersionStore &local) {
 
     return std::make_optional<LinearConflict>(
         conflict->object,
-        std::make_pair(conflict->local_base, conflict->global_head));
+      conflict->local_base,
+      conflict->global_head,
+      conflict->local_location,
+      conflict->global_location);
   }
 
   local.advance_base( _global_store.current_counter());

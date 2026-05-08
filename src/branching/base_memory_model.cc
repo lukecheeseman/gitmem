@@ -34,7 +34,7 @@ ReadResult BranchingMemoryModelBase::read(ThreadContext &ctx,
     [](const ValueWithSource& v) -> ReadResult { return v; },
     [&](const Conflict& c) -> ReadResult {
       return std::make_shared<BranchingConflict>(
-        c.obj, std::pair{c.timestamp_a, c.timestamp_b}
+        c.obj, c.timestamp_a, c.timestamp_b, c.location_a, c.location_b
       );
     },
 
@@ -71,7 +71,8 @@ BranchingMemoryModelBase::on_join(ThreadContext &joiner, ThreadContext &joinee) 
   if (conflict) {
     return std::make_shared<BranchingConflict>(
       conflict->obj,
-      std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
+      conflict->timestamp_a, conflict->timestamp_b,
+      conflict->location_a, conflict->location_b);
   }
 
   return std::nullopt;
@@ -104,7 +105,8 @@ BranchingMemoryModelBase::on_lock(ThreadContext &thread, Lock &lock) {
     if (conflict) {
       return std::make_shared<BranchingConflict>(
         conflict->obj,
-        std::make_pair(conflict->timestamp_a, conflict->timestamp_b));
+        conflict->timestamp_a, conflict->timestamp_b,
+        conflict->location_a, conflict->location_b);
     }
 
     lock_state.commit = store.get_head();
