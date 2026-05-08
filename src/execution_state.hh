@@ -97,8 +97,6 @@ public:
 
   void print(std::ostream& os, bool show_all = false) const;
   friend std::ostream& operator<<(std::ostream&, const GlobalContext&);
-
-  // void print_execution_graph(const std::filesystem::path &output_path) const;
 };
 
 } // namespace gitmem
