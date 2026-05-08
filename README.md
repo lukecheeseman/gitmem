@@ -6,7 +6,7 @@ An experimental interpreter and model checker for exploring concurrent programs 
 
 Gitmem is a research tool that models concurrent memory operations using version control semantics. It provides:
 
-- **Multiple sync protocols**: Linear and branching (with eager/lazy variants) semantics for thread synchronization
+- **Multiple memory models**: Linear and branching (with eager/lazy variants) semantics for thread synchronization
 - **Automatic model checking**: Explores all possible execution paths to find concurrency bugs
 - **Interactive debugging**: Step through different thread schedules interactively
 - **Execution visualization**: Generates GraphViz diagrams showing execution traces and revision graphs
@@ -103,16 +103,21 @@ Model checking will:
 Step through executions manually:
 
 ```bash
-./gitmem -i examples/singleton.gm
+./gitmem -i examples/race_condition.gm
 ```
 
 Commands in interactive mode:
 - `?` - Show help
-- `s` - Show current state
-- `n` - Step one thread forward
-- `r` - Run to next synchronization point
+- `s <tid>` - Step thread `<tid>` to its next scheduling point
+- `<tid>` - Shortcut for stepping thread `<tid>`
+- `l` - List current threads and state
+- `f` - Finish execution automatically
+- `r` - Restart from the beginning
+- `g` - Toggle automatic graph printing
+- `p` - Print graph immediately
+- `q` - Quit interactive mode
 
-### Sync Protocols
+### Memory Models
 
 Gitmem supports different memory models:
 
@@ -161,27 +166,29 @@ The test suite includes:
 
 ```
 src/
-  ├── gitmem.cc              - Main entry point
-  ├── lang.hh                - Language token definitions
-  ├── parser.cc              - Parser implementation
-  ├── interpreter.cc         - Interpreter core
-  ├── model_checker.cc       - Model checking engine
-  ├── debugger.cc            - Interactive debugger
-  ├── execution_state.hh     - Thread and memory state
-  ├── sync_protocol.hh       - Sync protocol interface
-  ├── linear/                - Linear sync protocol
-  └── branching/             - Branching sync protocols
-      ├── base_sync_protocol.cc
-      ├── eager/             - Eager conflict detection
-      └── lazy/              - Lazy conflict detection
+    ├── gitmem.cc                 - Main entry point and CLI
+    ├── lang.hh                   - Language/token definitions (+ entry_block helper)
+    ├── parser.cc                 - Parser implementation
+    ├── interpreter.cc            - Interpreter core
+    ├── model_checker.cc          - Model checking engine
+    ├── debugger.cc               - Interactive debugger
+    ├── execution_state.hh        - Runtime state (threads, locks, model state)
+    ├── memory_model.hh           - Memory model interface
+    ├── linear/
+    │   ├── memory_model.hh/.cc   - Linear memory model
+    │   └── version_store.hh/.cc
+    └── branching/
+            ├── base_memory_model.hh/.cc
+            ├── base_version_store.hh/.cc
+            ├── eager/memory_model.hh - Eager branching model
+            └── lazy/memory_model.hh  - Lazy branching model
 
 examples/
-  ├── accept/semantics/      - Valid programs
-  │   ├── linear/            - Linear semantics tests
-  │   └── branching/         - Branching semantics tests
-  └── reject/semantics/      - Programs with bugs
-      ├── linear/            - Deadlocks, races for linear
-      └── branching/         - Bugs for branching semantics
+    ├── race_condition.gm, tobias.gm, weird_dep.gm
+    ├── accept/                 - Passing test inputs
+    ├── reject/                 - Failing test inputs
+    ├── oracle/, key/           - Expected outputs and helpers
+    └── pugh-causality-tests/
 ```
 
 ## Executables

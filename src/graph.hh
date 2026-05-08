@@ -88,7 +88,7 @@ struct Read : Node {
     std::shared_ptr<const Node> source;
   };
 
-  const std::variant<SuccessfulRead, Conflict> read_result;
+  std::variant<SuccessfulRead, Conflict> read_result;
 
   // Constructor for successful read
   Read(const std::string var, const size_t value, const size_t id,
@@ -101,8 +101,7 @@ struct Read : Node {
 
   void set_source(const std::shared_ptr<const Node> source) {
     if (std::holds_alternative<SuccessfulRead>(read_result)) {
-      auto &sr = std::get<SuccessfulRead>(read_result);
-      const_cast<std::shared_ptr<const Node>&>(sr.source) = source;
+      std::get<SuccessfulRead>(read_result).source = source;
     }
   }
 
