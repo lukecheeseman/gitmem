@@ -252,13 +252,18 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   const bool has_g_lane = linear_mode;
   const size_t n_locks = has_g_lane ? 0 : lock_vars.size();
 
+  // In linear mode g sits in the middle: left threads 0..g_mid-1, right threads g_mid..N-1.
+  const size_t g_mid = has_g_lane ? (n_threads + 1) / 2 : 0;
+
   auto thread_x = [&](size_t tid) -> double {
+    if (has_g_lane)
+      return tid < g_mid ? SPACING * tid : SPACING * (tid + 1);
     return tid == 0 ? 0.0 : SPACING * (n_locks + tid);
   };
   auto lock_x = [&](size_t li) -> double {
     return SPACING * (li + 1);
   };
-  const double g_x = SPACING * (n_locks + n_threads);
+  const double g_x = has_g_lane ? SPACING * g_mid : SPACING * (n_locks + n_threads);
 
   std::unordered_map<std::string, size_t> lock_idx;
   for (size_t i = 0; i < n_locks; ++i)
@@ -378,8 +383,9 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   // Helper: emit a single event node
   auto emit_event = [&](const EventInfo& ev) {
     double x = thread_x(ev.tid);
-    // Label anchor: thread 0 labels go LEFT (east anchor), others go RIGHT (west anchor)
-    const char* anchor = (ev.tid == 0) ? "anchor=east, xshift=-3pt" : "anchor=west, xshift=3pt";
+    // Label anchor: threads left of g go LEFT (east anchor), threads right go RIGHT (west anchor)
+    const bool is_left = has_g_lane ? (ev.tid < g_mid) : (ev.tid == 0);
+    const char* anchor = is_left ? "anchor=east, xshift=-3pt" : "anchor=west, xshift=3pt";
 
     if (ev.is_conflict) {
       // Conflict event: emit a black outer octagon + red inner with "fail" text.
