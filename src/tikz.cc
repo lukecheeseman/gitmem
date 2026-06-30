@@ -147,8 +147,9 @@ struct ConflictEdge {
 
 void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& path,
                         bool linear_mode) {
-  const double Y_STEP  = -0.8;
-  const double SPACING =  1.3;
+  const double Y_STEP      = -0.8;  // gap between regular events
+  const double Y_SYNC_STEP = -1.2;  // gap when either neighbour is a sync event
+  const double SPACING     =  1.8;
   const size_t n_threads = g.threads.size();
 
   // ── Phase 1: collect events ───────────────────────────────────────────────
@@ -158,6 +159,12 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   std::unordered_map<const Node*, size_t>      node_tid;
   std::vector<std::string>                     lock_vars;
   std::vector<ConflictEdge>                    conflicts;
+
+  auto is_sync_node = [](const Node* nd) -> bool {
+    return dynamic_cast<const Start*>(nd)  || dynamic_cast<const End*>(nd)
+        || dynamic_cast<const Spawn*>(nd)  || dynamic_cast<const Join*>(nd)
+        || dynamic_cast<const Lock*>(nd)   || dynamic_cast<const Unlock*>(nd);
+  };
 
   auto add_lock_var = [&](const std::string& v) {
     if (std::find(lock_vars.begin(), lock_vars.end(), v) == lock_vars.end())
@@ -240,9 +247,14 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
       node_name[n] = ev.name;
       node_y[n]    = y;
       node_tid[n]  = tid;
+      const Node* next_n = n->next.get();
+      // Use extra spacing when the current or next event connects to g so that
+      // PullPush arcs and annotation boxes don't crowd adjacent events.
+      const bool near_sync = linear_mode
+          && (ev.is_sync || (next_n && is_sync_node(next_n)));
       per_thread[tid].push_back(std::move(ev));
-      y += Y_STEP;
-      n  = n->next.get();
+      y += near_sync ? Y_SYNC_STEP : Y_STEP;
+      n  = next_n;
     }
   }
 
@@ -502,11 +514,11 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
       // State annotations on g-lane arcs
       if (has_g_lane) {
         if (push_annotation.count(ev.node))
-          f << "\\node[sharedupdate, below=1pt] at ($(" << ev.name
+          f << "\\node[sharedupdate, below=8pt] at ($(" << ev.name
             << ")!0.5!(laneG |- " << ev.name << ")$) {"
             << push_annotation.at(ev.node) << "};\n";
         if (pull_annotation.count(ev.node))
-          f << "\\node[stateupdate, above=1pt] at ($(" << ev.name
+          f << "\\node[stateupdate, above=8pt] at ($(" << ev.name
             << ")!0.5!(laneG |- " << ev.name << ")$) {"
             << pull_annotation.at(ev.node) << "};\n";
       }
