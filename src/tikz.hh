@@ -7,7 +7,8 @@ namespace gitmem {
 namespace graph {
 
 struct TikzPrinter {
-  void print(const ExecutionGraph& g, const std::filesystem::path& path);
+  void print(const ExecutionGraph& g, const std::filesystem::path& path,
+             bool linear_mode = false);
 };
 
 } // namespace graph

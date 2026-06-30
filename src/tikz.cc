@@ -144,7 +144,8 @@ struct ConflictEdge {
   std::string lock_var;      // non-empty when routed through a lock lane
 };
 
-void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& path) {
+void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& path,
+                        bool linear_mode) {
   const double Y_STEP  = -0.8;
   const double SPACING =  1.3;
   const size_t n_threads = g.threads.size();
@@ -153,6 +154,7 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   std::vector<std::vector<EventInfo>>      per_thread(n_threads);
   std::unordered_map<const Node*, std::string> node_name;
   std::unordered_map<const Node*, double>      node_y;
+  std::unordered_map<const Node*, size_t>      node_tid;
   std::vector<std::string>                     lock_vars;
   std::vector<ConflictEdge>                    conflicts;
 
@@ -181,14 +183,14 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         ev.label   = "<end>";
         ev.is_sync = true;
       } else if (auto* nd = dynamic_cast<const Write*>(n)) {
-        ev.label = latex_escape(nd->var) + " = " + std::to_string(nd->value);
+        ev.label = "W(" + latex_escape(nd->var) + ") = " + std::to_string(nd->value);
       } else if (auto* nd = dynamic_cast<const Read*>(n)) {
         std::visit(overloaded{
           [&](const Read::SuccessfulRead& sr) {
-            ev.label = latex_escape(nd->var) + " = " + std::to_string(sr.value);
+            ev.label = "R(" + latex_escape(nd->var) + ") = " + std::to_string(sr.value);
           },
           [&](const Conflict&) {
-            ev.label       = latex_escape(nd->var) + " = ?";
+            ev.label       = "R(" + latex_escape(nd->var) + ") = ?";
             ev.is_conflict = true;
           }
         }, nd->read_result);
@@ -236,6 +238,7 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
 
       node_name[n] = ev.name;
       node_y[n]    = y;
+      node_tid[n]  = tid;
       per_thread[tid].push_back(std::move(ev));
       y += Y_STEP;
       n  = n->next.get();
@@ -243,7 +246,10 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   }
 
   // ── Phase 2: layout ───────────────────────────────────────────────────────
-  const size_t n_locks = lock_vars.size();
+  // In linear mode a single "g" lane represents the global sync object and
+  // replaces per-variable lock lanes in the diagram.
+  const bool has_g_lane = linear_mode;
+  const size_t n_locks = has_g_lane ? 0 : lock_vars.size();
 
   auto thread_x = [&](size_t tid) -> double {
     return tid == 0 ? 0.0 : SPACING * (n_locks + tid);
@@ -251,6 +257,7 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   auto lock_x = [&](size_t li) -> double {
     return SPACING * (li + 1);
   };
+  const double g_x = SPACING * (n_locks + n_threads);
 
   std::unordered_map<std::string, size_t> lock_idx;
   for (size_t i = 0; i < n_locks; ++i)
@@ -272,7 +279,7 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
        "arrows.meta,fit,positioning,quotes,tikzmark,shadows}\n"
     << "\n"
     << "\\newif\\ifdoublearrows\n"
-    << "\\doublearrowsfalse\n"
+    << "\\doublearrowstrue\n"
     << FORMATTER
     << "\n\\begin{document}\n"
     << "\\begin{tikzpicture}[common timeline styles]\n"
@@ -304,6 +311,10 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   for (size_t li = 0; li < n_locks; ++li)
     f << "\\node at (" << fmt(lock_x(li)) << ", 0.6) {"
       << latex_escape(lock_vars[li]) << "};\n";
+  if (has_g_lane) {
+    f << "\\coordinate (laneG) at (" << fmt(g_x) << ", 0);\n";
+    f << "\\node at (" << fmt(g_x) << ", 0.6) {g};\n";
+  }
   f << "\n";
 
   // Helper: emit a single event node
@@ -335,7 +346,6 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         << "  circle (0pt) coordinate (" << ev.name << ")\n"
         << "  node[" << anchor << ", codebox] {" << ev.label << "};\n";
     } else {
-      // Regular event: visible gray dot + label
       f << "\\fill[fill=threadtime] (" << fmt(x) << ", " << fmt(ev.y) << ")\n"
         << "  circle (2pt) coordinate (" << ev.name << ")\n"
         << "  node[" << anchor << ", codebox] {" << ev.label << "};\n";
@@ -372,6 +382,9 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
     f << "\\draw[shared lane] (" << fmt(lx) << ", 0.3) -- ("
       << fmt(lx) << ", " << fmt(lane_bottom) << ");\n";
   }
+  if (has_g_lane)
+    f << "\\draw[shared lane] (" << fmt(g_x) << ", 0.3) -- ("
+      << fmt(g_x) << ", " << fmt(lane_bottom) << ");\n";
   f << "\n";
 
   // ── Sync connections ──────────────────────────────────────────────────────
@@ -379,20 +392,21 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
   for (size_t tid = 0; tid < n_threads; ++tid) {
     for (auto& ev : per_thread[tid]) {
       if (auto* nd = dynamic_cast<const Spawn*>(ev.node)) {
-        if (nd->spawned) {
-          auto it = node_name.find(nd->spawned.get());
-          if (it != node_name.end())
-            f << "\\draw[link oneway] (" << ev.name << ") -- (" << it->second << ");\n";
-        }
+        (void)nd;
+        // g: spawn pulls + pushes
+        if (has_g_lane)
+          f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
       } else if (auto* nd = dynamic_cast<const Join*>(ev.node)) {
-        if (nd->joinee) {
-          auto it = node_name.find(nd->joinee.get());
-          if (it != node_name.end())
-            f << "\\draw[link oneway] (" << it->second << ") -- (" << ev.name << ");\n";
-        }
+        (void)nd;
+        // g: join pulls
+        if (has_g_lane)
+          f << "\\draw[link oneway] (laneG |- " << ev.name << ") -- (" << ev.name << ");\n";
       } else if (auto* nd = dynamic_cast<const Lock*>(ev.node)) {
-        if (nd->ordered_after) {
-          // Pull from shared lane
+        if (has_g_lane) {
+          // g: lock pulls
+          f << "\\draw[link oneway] (laneG |- " << ev.name << ") -- (" << ev.name << ");\n";
+        } else if (nd->ordered_after) {
+          // Lock lane: pull from per-variable lane
           std::string suffix;
           for (char c : nd->var) if (std::isalpha(c)) suffix += c;
           if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(nd->var));
@@ -400,12 +414,25 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
             << ") -- (" << ev.name << ");\n";
         }
       } else if (auto* nd = dynamic_cast<const Unlock*>(ev.node)) {
-        // Push to / pull from shared lane
-        std::string suffix;
-        for (char c : nd->var) if (std::isalpha(c)) suffix += c;
-        if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(nd->var));
-        f << "\\PullPush{(" << ev.name << ")}{(lane" << suffix
-          << " |- " << ev.name << ")}\n";
+        if (has_g_lane) {
+          // g: unlock pulls + pushes
+          f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
+        } else {
+          // Lock lane: PullPush to per-variable lane
+          std::string suffix;
+          for (char c : nd->var) if (std::isalpha(c)) suffix += c;
+          if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(nd->var));
+          f << "\\PullPush{(" << ev.name << ")}{(lane" << suffix
+            << " |- " << ev.name << ")}\n";
+        }
+      } else if (dynamic_cast<const Start*>(ev.node)) {
+        // g: start pulls
+        if (has_g_lane)
+          f << "\\draw[link oneway] (laneG |- " << ev.name << ") -- (" << ev.name << ");\n";
+      } else if (dynamic_cast<const End*>(ev.node)) {
+        // g: end pulls + pushes
+        if (has_g_lane)
+          f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
       }
     }
   }
@@ -438,16 +465,37 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
             << ") -- (lane" << suffix << " |- " << *unl
             << ") -- (lane" << suffix << " |- " << *cn
             << ") -- (" << *cn << ");\n";
-      } else if (ce.src1) {
-        auto s1 = get_name(ce.src1);
-        if (s1)
-          f << "\\draw[conflict] (" << *s1 << ") to[bend right=30] (" << *cn << ");\n";
-      }
+      } else if (ce.src1 || ce.src2) {
+        // Emit one conflict path per source.
+        // Same-thread source → direct line along the thread lane.
+        // Cross-thread source → route through the source thread's last sync
+        //   node (its End) then down the g lane to the conflict.
+        auto conflict_tid_it = node_tid.find(ce.conflict_node);
+        size_t conflict_tid  = (conflict_tid_it != node_tid.end())
+                                 ? conflict_tid_it->second : SIZE_MAX;
 
-      if (ce.src2) {
-        auto s2 = get_name(ce.src2);
-        if (s2)
-          f << "\\draw[conflict] (" << *s2 << ") -- (" << *cn << ");\n";
+        auto emit_src = [&](const Node* src) {
+          auto s = get_name(src);
+          if (!s) return;
+          auto src_tid_it = node_tid.find(src);
+          size_t src_tid  = (src_tid_it != node_tid.end())
+                              ? src_tid_it->second : SIZE_MAX;
+
+          if (has_g_lane && src_tid != conflict_tid) {
+            // Cross-thread: src → End of src thread → g → conflict
+            const std::string& end_name = per_thread[src_tid].back().name;
+            f << "\\draw[conflict] (" << *s << ") -- (" << end_name
+              << ") -- (laneG |- " << end_name
+              << ") -- (laneG |- " << *cn
+              << ") -- (" << *cn << ");\n";
+          } else {
+            // Same thread (or no g lane): direct line
+            f << "\\draw[conflict] (" << *s << ") -- (" << *cn << ");\n";
+          }
+        };
+
+        if (ce.src1) emit_src(ce.src1);
+        if (ce.src2) emit_src(ce.src2);
       }
     }
     f << "\\end{scope}\n\n";

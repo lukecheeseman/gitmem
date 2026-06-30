@@ -627,6 +627,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Track join nodes that need fixing up after all threads are processed
   std::vector<std::shared_ptr<graph::Join>> joins_to_fix;
 
+  // Track join conflict source fixups: (join node, conflict base carrying source events)
+  std::vector<std::pair<std::shared_ptr<graph::Join>, std::shared_ptr<ConflictBase>>> join_conflict_fixups;
+
   // Track read nodes that need their source fixed up
   std::vector<std::pair<std::shared_ptr<graph::Read>, std::shared_ptr<Event>>> reads_to_fix;
 
@@ -710,14 +713,15 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           event_to_node[event] = node;
         },
         [&](const JoinEvent& arg) {
-          // Create join node - will fix up joinee pointer later
+          // Create join node - will fix up joinee pointer and conflict sources later
           std::optional<graph::Conflict> conflict;
           if (arg.maybe_conflict) {
-            // Just mark as conflicting - version IDs don't map directly to nodes
-            conflict = graph::Conflict("");  // empty var name for joins
+            conflict = graph::Conflict(arg.maybe_conflict->object_name());
           }
           auto node = std::make_shared<graph::Join>(arg.joinee_tid, nullptr, conflict);
           joins_to_fix.push_back(node);
+          if (arg.maybe_conflict)
+            join_conflict_fixups.push_back({node, arg.maybe_conflict});
           link_in_program_order(tid, node);
           event_to_node[event] = node;
         },
@@ -779,6 +783,16 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
     const_cast<std::shared_ptr<const graph::Node>&>(join_node->joinee) = thread_tails[joinee_tid];
   }
 
+  // Fix up join conflict sources using the source events now that event_to_node is complete
+  for (auto& [join_node, cb] : join_conflict_fixups) {
+    auto [evt_a, evt_b] = cb->source_events();
+    std::shared_ptr<graph::Node> src_a, src_b;
+    if (evt_a && event_to_node.count(evt_a)) src_a = event_to_node.at(evt_a);
+    if (evt_b && event_to_node.count(evt_b)) src_b = event_to_node.at(evt_b);
+    if (src_a || src_b)
+      const_cast<graph::Conflict&>(*join_node->conflict).sources = {src_a, src_b};
+  }
+
   // Fix up read nodes to point to their source write events
   for (auto& [read_node, source_event] : reads_to_fix) {
     assert(event_to_node.contains(source_event) && "source missing in event_to_node map");
@@ -791,8 +805,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
 void Interpreter::print_execution_graph(const std::filesystem::path& output_path) {
   auto exec_graph = build_execution_graph_from_traces();
   if (output_path.extension() == ".tex") {
+    bool linear_mode = dynamic_cast<linear::LinearMemoryModel*>(gctx.model.get()) != nullptr;
     graph::TikzPrinter tikz;
-    tikz.print(exec_graph, output_path);
+    tikz.print(exec_graph, output_path, linear_mode);
   } else {
     graph::GraphvizPrinter gv(output_path);
     gv.visit(exec_graph.entry.get());
