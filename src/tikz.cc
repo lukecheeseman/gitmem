@@ -2,6 +2,7 @@
 #include "overloaded.hh"
 #include <fstream>
 #include <unordered_map>
+#include <map>
 #include <algorithm>
 #include <optional>
 #include <cstdio>
@@ -268,6 +269,63 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
     if (!per_thread[tid].empty())
       lane_bottom = std::min(lane_bottom, per_thread[tid].back().y - 0.5);
 
+  // ── Phase 1b: sync state annotations (push/pull labels on g-lane arcs) ────
+  // push_annotation: dark grey sharedupdate box — what the thread staged → g
+  // pull_annotation: light grey stateupdate box — what the thread receives ← g
+  std::unordered_map<const Node*, std::string> push_annotation;
+  std::unordered_map<const Node*, std::string> pull_annotation;
+
+  if (has_g_lane) {
+    auto format_state = [&](size_t tid,
+                            const std::map<std::string, size_t>& state) -> std::string {
+      if (state.empty()) return "";
+      std::string lbl = "$";
+      bool first = true;
+      for (auto& [var, val] : state) {
+        if (!first) lbl += ",\\,";
+        lbl += latex_escape(var) + "_{" + std::to_string(tid) + "}="
+             + std::to_string(val);
+        first = false;
+      }
+      return lbl + "$";
+    };
+
+    // Pass A: push annotations — writes accumulated between End/Spawn sync points
+    for (size_t tid = 0; tid < n_threads; ++tid) {
+      std::map<std::string, size_t> pending;
+      for (auto& ev : per_thread[tid]) {
+        if (auto* wr = dynamic_cast<const Write*>(ev.node)) {
+          pending[wr->var] = wr->value;
+        } else if (dynamic_cast<const Spawn*>(ev.node)
+                   || dynamic_cast<const End*>(ev.node)) {
+          std::string lbl = format_state(tid, pending);
+          if (!lbl.empty())
+            push_annotation[ev.node] = lbl;
+          pending.clear();
+        }
+      }
+    }
+
+    // Pass B: pull annotations — derived from the corresponding push
+    //   Start of spawned thread ← inherits Spawn's push state
+    //   Join                    ← inherits joinee's End push state
+    for (size_t tid = 0; tid < n_threads; ++tid) {
+      for (auto& ev : per_thread[tid]) {
+        if (auto* sp = dynamic_cast<const Spawn*>(ev.node)) {
+          auto it = push_annotation.find(ev.node);
+          if (it != push_annotation.end() && sp->spawned)
+            pull_annotation[sp->spawned.get()] = it->second;
+        } else if (auto* jn = dynamic_cast<const Join*>(ev.node)) {
+          if (jn->joinee) {
+            auto it = push_annotation.find(jn->joinee.get());
+            if (it != push_annotation.end())
+              pull_annotation[ev.node] = it->second;
+          }
+        }
+      }
+    }
+  }
+
   // ── Phase 3: emit ─────────────────────────────────────────────────────────
   std::ofstream f(path);
 
@@ -434,6 +492,17 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         // g: end pulls + pushes
         if (has_g_lane)
           f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
+      }
+      // State annotations on g-lane arcs
+      if (has_g_lane) {
+        if (push_annotation.count(ev.node))
+          f << "\\node[sharedupdate, below=1pt] at ($(" << ev.name
+            << ")!0.5!(laneG |- " << ev.name << ")$) {"
+            << push_annotation.at(ev.node) << "};\n";
+        if (pull_annotation.count(ev.node))
+          f << "\\node[stateupdate, above=1pt] at ($(" << ev.name
+            << ")!0.5!(laneG |- " << ev.name << ")$) {"
+            << pull_annotation.at(ev.node) << "};\n";
       }
     }
   }
