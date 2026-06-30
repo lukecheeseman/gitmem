@@ -2,6 +2,7 @@
 #include "debug.hh"
 #include "thread_trace.hh"
 
+#include <queue>
 #include <unordered_set>
 
 namespace gitmem {

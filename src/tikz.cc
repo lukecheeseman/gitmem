@@ -1,0 +1,460 @@
+#include "tikz.hh"
+#include "overloaded.hh"
+#include <fstream>
+#include <unordered_map>
+#include <algorithm>
+#include <optional>
+#include <cstdio>
+
+namespace gitmem {
+namespace graph {
+
+static std::string latex_escape(const std::string& s) {
+  std::string r;
+  r.reserve(s.size());
+  for (char c : s) {
+    switch (c) {
+      case '_': r += "\\_";  break;
+      case '$': r += "\\$";  break;
+      case '&': r += "\\&";  break;
+      case '%': r += "\\%";  break;
+      case '#': r += "\\#";  break;
+      case '{': r += "\\{";  break;
+      case '}': r += "\\}";  break;
+      default:  r += c;      break;
+    }
+  }
+  return r;
+}
+
+static std::string node_id(size_t tid, size_t idx) {
+  return "t" + std::to_string(tid) + "e" + std::to_string(idx);
+}
+
+static std::string fmt(double v) {
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%.2f", v);
+  return buf;
+}
+
+// Formatter macros from the paper (verbatim). Stored as a raw string so that
+// LaTeX special characters (backslashes, #, etc.) are preserved.
+static const char* FORMATTER = R"(
+\newlength{\codeboxleftshift}
+\newlength{\codeboxrightshift}
+\setlength{\codeboxrightshift}{3pt}
+\tikzset{
+  common timeline styles/.style={
+    >={Latex[scale=0.8]},
+    every node/.style={font=\scriptsize\ttfamily},
+    codebox/.style={rounded corners=1.5pt, inner sep=1pt},
+    thread lane/.style={ultra thick, draw=threadtime, dashed},
+    shared lane/.style={thread lane, draw=sharedmem},
+    history link/.style={line width=0.8pt},
+    link left/.style={history link, {Latex[round, scale=1.1]}-, draw=communicationblue},
+    link right/.style={history link, -{Latex[round, scale=1.1]}, draw=communicationblue},
+    link oneway/.style={history link, -{Latex[round, scale=1.1]}, draw=communicationblue},
+    link both/.style={history link,
+      {Latex[round, scale=1.1]}-{Latex[round, scale=1.1]},
+      draw=communicationblue},
+    conflict/.style={line width=3pt, -{Latex[round,scale=0.8]}, draw=conflictred},
+    stateupdate/.style={draw=threadtime, fill=threadtime!15, rounded corners=4pt,
+      inner sep=1.5pt, font=\scriptsize\ttfamily},
+    sharedupdate/.style={draw=sharedmem!80!black, fill=sharedmem!30, rounded corners=4pt,
+      inner sep=1.5pt, font=\scriptsize\ttfamily},
+    t1 code/.style={anchor=west, xshift=\the\codeboxleftshift, codebox},
+    t2 code/.style={anchor=west, xshift=\the\codeboxrightshift, codebox},
+    t1 state/.style={right, xshift=3pt,  stateupdate},
+    t2 state/.style={left,  xshift=-3pt, stateupdate},
+    g state right/.style={right, xshift=3pt, sharedupdate},
+    g state left/.style={left,  xshift=-3pt, sharedupdate},
+  }
+}
+\newcommand{\TimelineColorSetup}{
+  \definecolor{threadtime}{rgb}{0.5,0.5,0.5}
+  \definecolor{sharedmem}{rgb}{0.3,0.3,0.3}
+  \definecolor{communicationblue}{rgb}{0.2,0.4,1}
+  \definecolor{conflictred}{rgb}{1,0.2,0.2}
+}
+\newcommand{\DefineThreadEventMacros}{
+  \newcommand{\ResolveThreadX}[1]{%
+    \def\tx{\onex}\ifnum\pdfstrcmp{##1}{t2}=0\def\tx{\twox}\fi}
+  \newcommand{\ThreadEvent}[4]{%
+    \ResolveThreadX{##1}%
+    \fill[fill=threadtime] (\tx,##2) circle (2pt) coordinate (##3) node[##1 code] {##4};}
+  \newcommand{\ThreadEventFrom}[5]{%
+    \fill[fill=threadtime] ($(##2)+(0,##3)$) circle (2pt) coordinate (##4) node[##1 code] {##5};}
+  \newcommand{\ThreadSyncEvent}[4]{%
+    \ResolveThreadX{##1}%
+    \fill (\tx,##2) circle (0pt) coordinate (##3) node[##1 code] {##4};}
+  \newcommand{\ThreadSyncEventFrom}[5]{%
+    \fill ($(##2)+(0,##3)$) circle (0pt) coordinate (##4) node[##1 code] {##5};}
+  \newcommand{\PullPush}[2]{
+    \ifdoublearrows
+      \path let \p1 = ##1, \p2 = ##2 in \pgfextra{%
+        \ifdim\x1<\x2
+          \draw[link oneway] ##2 to[looseness=.5, out=140, in=30] ##1;
+          \draw[link oneway] ##1 to[looseness=.5, out=320, in=210] ##2;
+        \else
+          \draw[link oneway] ##2 to[looseness=.5, out=40, in=150] ##1;
+          \draw[link oneway] ##1 to[looseness=.5, out=220, in=330] ##2;
+        \fi
+      };
+    \else
+      \draw[link both] ##1 -- ##2;
+    \fi
+  }
+  \newcommand{\ConflictEvent}[2]{
+    \node[regular polygon, regular polygon sides=8,
+        draw=black, fill=black, line width=2pt,
+        minimum size=20pt, inner sep=0pt] (##2) at (##1) {};
+    \node[regular polygon, regular polygon sides=8,
+        draw=white, fill=conflictred, line width=0.9pt,
+        minimum size=14pt, inner sep=0pt,
+        font=\scriptsize\bfseries\sffamily, text=white] at (##1) {\textsc{fail}};
+  }
+}
+\newcommand{\CodeWidthOf}[1]{\widthof{{\scriptsize\ttfamily\selectfont #1}}}
+\newcommand{\SetLeftCodeShift}[1]{%
+  \settowidth{\codeboxleftshift}{#1}%
+  \setlength{\codeboxleftshift}{-\codeboxleftshift}%
+  \addtolength{\codeboxleftshift}{-3mm}%
+}
+\newcommand{\SetRightCodeShift}[1]{\setlength{\codeboxrightshift}{#1}}
+)";
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct EventInfo {
+  const Node* node;
+  std::string name;
+  std::string label;
+  bool is_sync     = false;
+  bool is_conflict = false;
+  bool is_pending  = false;
+  double y = 0.0;
+  size_t tid = 0;
+};
+
+struct ConflictEdge {
+  const Node* src1;
+  const Node* src2;
+  const Node* ordered_after; // Unlock that links src1 to the conflict via shared lane
+  const Node* conflict_node;
+  std::string lock_var;      // non-empty when routed through a lock lane
+};
+
+void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& path) {
+  const double Y_STEP  = -0.8;
+  const double SPACING =  1.3;
+  const size_t n_threads = g.threads.size();
+
+  // ── Phase 1: collect events ───────────────────────────────────────────────
+  std::vector<std::vector<EventInfo>>      per_thread(n_threads);
+  std::unordered_map<const Node*, std::string> node_name;
+  std::unordered_map<const Node*, double>      node_y;
+  std::vector<std::string>                     lock_vars;
+  std::vector<ConflictEdge>                    conflicts;
+
+  auto add_lock_var = [&](const std::string& v) {
+    if (std::find(lock_vars.begin(), lock_vars.end(), v) == lock_vars.end())
+      lock_vars.push_back(v);
+  };
+
+  for (size_t tid = 0; tid < n_threads; ++tid) {
+    double y = 0.0;
+    size_t idx = 0;
+    const Node* n = g.threads[tid].get();
+    while (n) {
+      EventInfo ev;
+      ev.node = n;
+      ev.name = node_id(tid, idx++);
+      ev.y    = y;
+      ev.tid  = tid;
+
+      if (auto* nd = dynamic_cast<const Start*>(n)) {
+        (void)nd;
+        ev.label   = "<start>";
+        ev.is_sync = true;
+      } else if (auto* nd = dynamic_cast<const End*>(n)) {
+        (void)nd;
+        ev.label   = "<end>";
+        ev.is_sync = true;
+      } else if (auto* nd = dynamic_cast<const Write*>(n)) {
+        ev.label = latex_escape(nd->var) + " = " + std::to_string(nd->value);
+      } else if (auto* nd = dynamic_cast<const Read*>(n)) {
+        std::visit(overloaded{
+          [&](const Read::SuccessfulRead& sr) {
+            ev.label = latex_escape(nd->var) + " = " + std::to_string(sr.value);
+          },
+          [&](const Conflict&) {
+            ev.label       = latex_escape(nd->var) + " = ?";
+            ev.is_conflict = true;
+          }
+        }, nd->read_result);
+      } else if (auto* nd = dynamic_cast<const Spawn*>(n)) {
+        (void)nd;
+        ev.label   = "<spawn>";
+        ev.is_sync = true;
+      } else if (auto* nd = dynamic_cast<const Join*>(n)) {
+        ev.label   = "<join>";
+        ev.is_sync = true;
+        if (nd->conflict) {
+          ev.is_conflict = true;
+          conflicts.push_back({
+            nd->conflict->sources.first.get(),
+            nd->conflict->sources.second.get(),
+            nd->joinee.get(),
+            n, ""
+          });
+        }
+      } else if (auto* nd = dynamic_cast<const Lock*>(n)) {
+        ev.label   = "lock(" + latex_escape(nd->var) + ")";
+        ev.is_sync = true;
+        add_lock_var(nd->var);
+        if (nd->conflict) {
+          ev.is_conflict = true;
+          conflicts.push_back({
+            nd->conflict->sources.first.get(),
+            nd->conflict->sources.second.get(),
+            nd->ordered_after.get(),
+            n, nd->var
+          });
+        }
+      } else if (auto* nd = dynamic_cast<const Unlock*>(n)) {
+        ev.label   = "unlock(" + latex_escape(nd->var) + ")";
+        ev.is_sync = true;
+        add_lock_var(nd->var);
+      } else if (auto* nd = dynamic_cast<const Assertion*>(n)) {
+        ev.label = "assert(" + latex_escape(nd->cond) + ")";
+        if (!nd->passed) ev.is_conflict = true;
+      } else if (auto* nd = dynamic_cast<const Pending*>(n)) {
+        ev.label      = latex_escape(nd->statement);
+        ev.is_pending = true;
+        ev.is_sync    = true;
+      }
+
+      node_name[n] = ev.name;
+      node_y[n]    = y;
+      per_thread[tid].push_back(std::move(ev));
+      y += Y_STEP;
+      n  = n->next.get();
+    }
+  }
+
+  // ── Phase 2: layout ───────────────────────────────────────────────────────
+  const size_t n_locks = lock_vars.size();
+
+  auto thread_x = [&](size_t tid) -> double {
+    return tid == 0 ? 0.0 : SPACING * (n_locks + tid);
+  };
+  auto lock_x = [&](size_t li) -> double {
+    return SPACING * (li + 1);
+  };
+
+  std::unordered_map<std::string, size_t> lock_idx;
+  for (size_t i = 0; i < n_locks; ++i)
+    lock_idx[lock_vars[i]] = i;
+
+  double lane_bottom = -0.5;
+  for (size_t tid = 0; tid < n_threads; ++tid)
+    if (!per_thread[tid].empty())
+      lane_bottom = std::min(lane_bottom, per_thread[tid].back().y - 0.5);
+
+  // ── Phase 3: emit ─────────────────────────────────────────────────────────
+  std::ofstream f(path);
+
+  // Document preamble
+  f << "\\documentclass{standalone}\n"
+    << "\\usepackage{tikz}\n"
+    << "\\usepackage{calc}\n"
+    << "\\usetikzlibrary{automata,shapes,decorations,arrows,calc,"
+       "arrows.meta,fit,positioning,quotes,tikzmark,shadows}\n"
+    << "\n"
+    << "\\newif\\ifdoublearrows\n"
+    << "\\doublearrowsfalse\n"
+    << FORMATTER
+    << "\n\\begin{document}\n"
+    << "\\begin{tikzpicture}[common timeline styles]\n"
+    << "\\TimelineColorSetup\n\n";
+
+
+  // Named coordinates for each lock lane (used with |- notation)
+  for (size_t li = 0; li < n_locks; ++li) {
+    std::string suffix;
+    for (char c : lock_vars[li]) if (std::isalpha(c)) suffix += c;
+    if (suffix.empty()) suffix = "L" + std::to_string(li);
+    f << "\\coordinate (lane" << suffix << ") at (" << fmt(lock_x(li)) << ", 0);\n";
+  }
+  f << "\n";
+
+  // Compute longest label for thread 0 and set left code shift
+  {
+    std::string longest;
+    for (auto& ev : per_thread[0])
+      if (ev.label.size() > longest.size()) longest = ev.label;
+    if (!longest.empty())
+      f << "\\SetLeftCodeShift{\\CodeWidthOf{" << longest << "}}\n";
+  }
+  f << "\\DefineThreadEventMacros\n\n";
+
+  // Column headers
+  for (size_t tid = 0; tid < n_threads; ++tid)
+    f << "\\node at (" << fmt(thread_x(tid)) << ", 0.6) {T$_{" << tid << "}$};\n";
+  for (size_t li = 0; li < n_locks; ++li)
+    f << "\\node at (" << fmt(lock_x(li)) << ", 0.6) {"
+      << latex_escape(lock_vars[li]) << "};\n";
+  f << "\n";
+
+  // Helper: emit a single event node
+  auto emit_event = [&](const EventInfo& ev) {
+    double x = thread_x(ev.tid);
+    // Label anchor: thread 0 labels go LEFT (east anchor), others go RIGHT (west anchor)
+    const char* anchor = (ev.tid == 0) ? "anchor=east, xshift=-3pt" : "anchor=west, xshift=3pt";
+
+    if (ev.is_conflict) {
+      // Conflict event: emit a black outer octagon + red inner with "fail" text.
+      // Using a named \node (not a coordinate) so the name can be used with |-.
+      f << "\\node[regular polygon, regular polygon sides=8,\n"
+        << "  draw=black, fill=black, line width=2pt,\n"
+        << "  minimum size=20pt, inner sep=0pt] (" << ev.name << ")\n"
+        << "  at (" << fmt(x) << ", " << fmt(ev.y) << ") {};\n"
+        << "\\node[regular polygon, regular polygon sides=8,\n"
+        << "  draw=white, fill=conflictred, line width=0.9pt,\n"
+        << "  minimum size=14pt, inner sep=0pt,\n"
+        << "  font=\\scriptsize\\bfseries\\sffamily, text=white]\n"
+        << "  at (" << fmt(x) << ", " << fmt(ev.y) << ") {\\textsc{fail}};\n";
+    } else if (ev.is_pending) {
+      f << "\\fill[fill=threadtime!50] (" << fmt(x) << ", " << fmt(ev.y) << ")\n"
+        << "  circle (1.5pt) coordinate (" << ev.name << ")\n"
+        << "  node[" << anchor << ", codebox, opacity=0.6] {"
+        << ev.label << "};\n";
+    } else if (ev.is_sync) {
+      // Sync event: invisible dot, label only
+      f << "\\fill (" << fmt(x) << ", " << fmt(ev.y) << ")\n"
+        << "  circle (0pt) coordinate (" << ev.name << ")\n"
+        << "  node[" << anchor << ", codebox] {" << ev.label << "};\n";
+    } else {
+      // Regular event: visible gray dot + label
+      f << "\\fill[fill=threadtime] (" << fmt(x) << ", " << fmt(ev.y) << ")\n"
+        << "  circle (2pt) coordinate (" << ev.name << ")\n"
+        << "  node[" << anchor << ", codebox] {" << ev.label << "};\n";
+    }
+  };
+
+  // Emit all events
+  for (size_t tid = 0; tid < n_threads; ++tid) {
+    f << "% Thread " << tid << "\n";
+    for (auto& ev : per_thread[tid])
+      emit_event(ev);
+    f << "\n";
+  }
+
+  // ── Lane lines ────────────────────────────────────────────────────────────
+  f << "% Lane lines\n";
+  for (size_t tid = 0; tid < n_threads; ++tid) {
+    double x = thread_x(tid);
+    auto& evs = per_thread[tid];
+    if (evs.empty()) continue;
+    auto& last = evs.back();
+    bool ends = dynamic_cast<const End*>(last.node) != nullptr;
+    bool conflict_last = last.is_conflict;
+
+    if (ends || conflict_last) {
+      f << "\\draw[thread lane, ->] (" << fmt(x) << ", 0.3) -- (" << last.name << ");\n";
+    } else {
+      f << "\\draw[thread lane, ->] (" << fmt(x) << ", 0.3) -- ("
+        << fmt(x) << ", " << fmt(lane_bottom) << ");\n";
+    }
+  }
+  for (size_t li = 0; li < n_locks; ++li) {
+    double lx = lock_x(li);
+    f << "\\draw[shared lane] (" << fmt(lx) << ", 0.3) -- ("
+      << fmt(lx) << ", " << fmt(lane_bottom) << ");\n";
+  }
+  f << "\n";
+
+  // ── Sync connections ──────────────────────────────────────────────────────
+  f << "% Sync connections\n";
+  for (size_t tid = 0; tid < n_threads; ++tid) {
+    for (auto& ev : per_thread[tid]) {
+      if (auto* nd = dynamic_cast<const Spawn*>(ev.node)) {
+        if (nd->spawned) {
+          auto it = node_name.find(nd->spawned.get());
+          if (it != node_name.end())
+            f << "\\draw[link oneway] (" << ev.name << ") -- (" << it->second << ");\n";
+        }
+      } else if (auto* nd = dynamic_cast<const Join*>(ev.node)) {
+        if (nd->joinee) {
+          auto it = node_name.find(nd->joinee.get());
+          if (it != node_name.end())
+            f << "\\draw[link oneway] (" << it->second << ") -- (" << ev.name << ");\n";
+        }
+      } else if (auto* nd = dynamic_cast<const Lock*>(ev.node)) {
+        if (nd->ordered_after) {
+          // Pull from shared lane
+          std::string suffix;
+          for (char c : nd->var) if (std::isalpha(c)) suffix += c;
+          if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(nd->var));
+          f << "\\draw[link oneway] (lane" << suffix << " |- " << ev.name
+            << ") -- (" << ev.name << ");\n";
+        }
+      } else if (auto* nd = dynamic_cast<const Unlock*>(ev.node)) {
+        // Push to / pull from shared lane
+        std::string suffix;
+        for (char c : nd->var) if (std::isalpha(c)) suffix += c;
+        if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(nd->var));
+        f << "\\PullPush{(" << ev.name << ")}{(lane" << suffix
+          << " |- " << ev.name << ")}\n";
+      }
+    }
+  }
+  f << "\n";
+
+  // ── Conflict paths ────────────────────────────────────────────────────────
+  if (!conflicts.empty()) {
+    f << "% Conflict paths\n"
+      << "\\begin{scope}[opacity=0.5]\n";
+    for (auto& ce : conflicts) {
+      auto get_name = [&](const Node* n) -> std::optional<std::string> {
+        if (!n) return std::nullopt;
+        auto it = node_name.find(n);
+        if (it == node_name.end()) return std::nullopt;
+        return it->second;
+      };
+
+      auto cn = get_name(ce.conflict_node);
+      if (!cn) continue;
+
+      if (ce.src1 && !ce.lock_var.empty() && ce.ordered_after) {
+        // Route via shared lane: src1 → unlock → lane → conflict
+        auto s1   = get_name(ce.src1);
+        auto unl  = get_name(ce.ordered_after);
+        std::string suffix;
+        for (char c : ce.lock_var) if (std::isalpha(c)) suffix += c;
+        if (suffix.empty()) suffix = "L" + std::to_string(lock_idx.at(ce.lock_var));
+        if (s1 && unl)
+          f << "\\draw[conflict] (" << *s1 << ") -- (" << *unl
+            << ") -- (lane" << suffix << " |- " << *unl
+            << ") -- (lane" << suffix << " |- " << *cn
+            << ") -- (" << *cn << ");\n";
+      } else if (ce.src1) {
+        auto s1 = get_name(ce.src1);
+        if (s1)
+          f << "\\draw[conflict] (" << *s1 << ") to[bend right=30] (" << *cn << ");\n";
+      }
+
+      if (ce.src2) {
+        auto s2 = get_name(ce.src2);
+        if (s2)
+          f << "\\draw[conflict] (" << *s2 << ") -- (" << *cn << ");\n";
+      }
+    }
+    f << "\\end{scope}\n\n";
+  }
+
+  f << "\\end{tikzpicture}\n\\end{document}\n";
+}
+
+} // namespace graph
+} // namespace gitmem

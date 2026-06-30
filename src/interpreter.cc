@@ -655,6 +655,10 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
     thread_tails[tid] = node;
   };
 
+  // Track whether each thread's trace already included an EndEvent (e.g. for
+  // stuck threads that had on_end() called on them in Interpreter::run()).
+  std::vector<bool> thread_has_end(gctx.threads.size(), false);
+
   // Process events from all threads
   for (ThreadID tid = 0; tid < gctx.threads.size(); ++tid) {
     auto& thread = gctx.threads[tid];
@@ -674,6 +678,7 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           auto node = std::make_shared<graph::End>();
           link_in_program_order(tid, node);
           event_to_node[event] = node;
+          thread_has_end[tid] = true;
         },
         [&](const WriteEvent& arg) {
           auto node = std::make_shared<graph::Write>(arg.var, arg.value, tid);
@@ -751,8 +756,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
       }, event->data);
     }
 
-    // Add pending node if thread hasn't terminated
-    if (!thread.terminated) {
+    // Add pending node if thread hasn't terminated and didn't already receive
+    // an EndEvent (which run() adds for stuck threads via on_end()).
+    if (!thread.terminated && !thread_has_end[tid]) {
       if (thread.pc < thread.block->size()) {
         // Thread is stuck waiting at a specific statement
         trieste::Node stmt = thread.block->at(thread.pc);
@@ -784,8 +790,13 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
 
 void Interpreter::print_execution_graph(const std::filesystem::path& output_path) {
   auto exec_graph = build_execution_graph_from_traces();
-  graph::GraphvizPrinter gv(output_path);
-  gv.visit(exec_graph.entry.get());
+  if (output_path.extension() == ".tex") {
+    graph::TikzPrinter tikz;
+    tikz.print(exec_graph, output_path);
+  } else {
+    graph::GraphvizPrinter gv(output_path);
+    gv.visit(exec_graph.entry.get());
+  }
 }
 
 int interpret(const Node ast, const std::filesystem::path &output_path,
