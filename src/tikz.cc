@@ -183,23 +183,23 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         ev.label   = "<end>";
         ev.is_sync = true;
       } else if (auto* nd = dynamic_cast<const Write*>(n)) {
-        ev.label = "W(" + latex_escape(nd->var) + ") = " + std::to_string(nd->value);
+        ev.label = "W(" + latex_escape(nd->var) + "$_{" + std::to_string(tid) + "}$) = " + std::to_string(nd->value);
       } else if (auto* nd = dynamic_cast<const Read*>(n)) {
         std::visit(overloaded{
           [&](const Read::SuccessfulRead& sr) {
-            ev.label = "R(" + latex_escape(nd->var) + ") = " + std::to_string(sr.value);
+            ev.label = "R(" + latex_escape(nd->var) + "$_{" + std::to_string(tid) + "}$) = " + std::to_string(sr.value);
           },
           [&](const Conflict&) {
-            ev.label       = "R(" + latex_escape(nd->var) + ") = ?";
+            ev.label       = "R(" + latex_escape(nd->var) + "$_{" + std::to_string(tid) + "}$) = ?";
             ev.is_conflict = true;
           }
         }, nd->read_result);
       } else if (auto* nd = dynamic_cast<const Spawn*>(n)) {
         (void)nd;
-        ev.label   = "<spawn>";
+        ev.label   = "spawn";
         ev.is_sync = true;
       } else if (auto* nd = dynamic_cast<const Join*>(n)) {
-        ev.label   = "<join>";
+        ev.label   = "join";
         ev.is_sync = true;
         if (nd->conflict) {
           ev.is_conflict = true;
@@ -370,10 +370,11 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
     bool ends = dynamic_cast<const End*>(last.node) != nullptr;
     bool conflict_last = last.is_conflict;
 
+    const std::string& start_name = evs.front().name;
     if (ends || conflict_last) {
-      f << "\\draw[thread lane, ->] (" << fmt(x) << ", 0.3) -- (" << last.name << ");\n";
+      f << "\\draw[thread lane, ->] (" << start_name << ") -- (" << last.name << ");\n";
     } else {
-      f << "\\draw[thread lane, ->] (" << fmt(x) << ", 0.3) -- ("
+      f << "\\draw[thread lane, ->] (" << start_name << ") -- ("
         << fmt(x) << ", " << fmt(lane_bottom) << ");\n";
     }
   }
@@ -482,10 +483,14 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
                               ? src_tid_it->second : SIZE_MAX;
 
           if (has_g_lane && src_tid != conflict_tid) {
-            // Cross-thread: src → End of src thread → g → conflict
+            // Cross-thread: src → End of src thread → (arc) → g → conflict
             const std::string& end_name = per_thread[src_tid].back().name;
+            // Match the PullPush push-arc direction (event left of g → out=320,in=210)
+            const char* push_arc = (thread_x(src_tid) < g_x)
+                                     ? "looseness=.5, out=320, in=210"
+                                     : "looseness=.5, out=220, in=330";
             f << "\\draw[conflict] (" << *s << ") -- (" << end_name
-              << ") -- (laneG |- " << end_name
+              << ") to[" << push_arc << "] (laneG |- " << end_name
               << ") -- (laneG |- " << *cn
               << ") -- (" << *cn << ");\n";
           } else {
