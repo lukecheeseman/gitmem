@@ -422,13 +422,17 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
       return lbl + "$";
     };
 
-    // Pass A: push annotations — writes accumulated between End/Spawn sync points
+    // Pass A: push annotations — writes accumulated between sync points.
+    // Lock resets the accumulator; Unlock, Spawn, and End emit the push.
     for (size_t tid = 0; tid < n_threads; ++tid) {
       std::map<std::string, size_t> pending;
       for (auto& ev : per_thread[tid]) {
         if (auto* wr = dynamic_cast<const Write*>(ev.node)) {
           pending[wr->var] = wr->value;
-        } else if (dynamic_cast<const Spawn*>(ev.node)
+        } else if (dynamic_cast<const Lock*>(ev.node)) {
+          pending.clear();
+        } else if (dynamic_cast<const Unlock*>(ev.node)
+                   || dynamic_cast<const Spawn*>(ev.node)
                    || dynamic_cast<const End*>(ev.node)) {
           std::string lbl = format_state(tid, pending);
           if (!lbl.empty())
@@ -438,9 +442,10 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
       }
     }
 
-    // Pass B: pull annotations — derived from the corresponding push
+    // Pass B: pull annotations — derived from the corresponding push.
     //   Start of spawned thread ← inherits Spawn's push state
     //   Join                    ← inherits joinee's End push state
+    //   Lock                    ← inherits the ordered_after Unlock's push state
     for (size_t tid = 0; tid < n_threads; ++tid) {
       for (auto& ev : per_thread[tid]) {
         if (auto* sp = dynamic_cast<const Spawn*>(ev.node)) {
@@ -448,8 +453,21 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
           if (it != push_annotation.end() && sp->spawned)
             pull_annotation[sp->spawned.get()] = it->second;
         } else if (auto* jn = dynamic_cast<const Join*>(ev.node)) {
-          if (jn->joinee) {
-            auto it = push_annotation.find(jn->joinee.get());
+          // In linear mode, pushes happen at Unlock, so End may be empty.
+          // Scan the joinee's thread for the last push annotation.
+          if (jn->tid < per_thread.size()) {
+            const std::string* last_push = nullptr;
+            for (auto& jev : per_thread[jn->tid]) {
+              auto it = push_annotation.find(jev.node);
+              if (it != push_annotation.end())
+                last_push = &it->second;
+            }
+            if (last_push)
+              pull_annotation[ev.node] = *last_push;
+          }
+        } else if (auto* lk = dynamic_cast<const Lock*>(ev.node)) {
+          if (lk->ordered_after) {
+            auto it = push_annotation.find(lk->ordered_after.get());
             if (it != push_annotation.end())
               pull_annotation[ev.node] = it->second;
           }
