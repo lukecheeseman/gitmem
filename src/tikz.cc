@@ -149,7 +149,7 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
                         bool linear_mode) {
   const double Y_STEP         = -0.8;  // gap between regular events
   const double Y_SYNC_STEP    = -1.2;  // gap when either neighbour is a sync event
-  const double Y_SPAWN_OFFSET = -0.4;  // child thread starts this far below its spawn
+  const double Y_SPAWN_OFFSET =  0.0;  // child thread starts at same y as its spawn
   const double Y_JOIN_GAP     =  0.3;  // min gap between joinee's end and join event
   const double Y_LOCK_GAP     =  0.4;  // min gap between ordered_after unlock and lock
   const double SPACING        =  1.8;
@@ -245,6 +245,12 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         add_lock_var(nd->var);
         if (nd->conflict) {
           ev.is_conflict = true;
+          conflicts.push_back({
+            nd->conflict->sources.first.get(),
+            nd->conflict->sources.second.get(),
+            nd->g_predecessor.get(),
+            n, ""
+          });
         }
       } else if (auto* nd = dynamic_cast<const Assertion*>(n)) {
         ev.label = "assert(" + latex_escape(nd->cond) + ")";
@@ -339,6 +345,22 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
               per_thread[tid][j].y += shift;
               node_y[per_thread[tid][j].node] = per_thread[tid][j].y;
             }
+          }
+        }
+      }
+    }
+  }
+
+  // Post-pass 3: pull joinee's <end> down to the join's y so that the
+  // join arrow is perfectly horizontal, matching the spawn↔start alignment.
+  for (size_t tid = 0; tid < n_threads; ++tid) {
+    for (auto& ev : per_thread[tid]) {
+      if (auto* jn = dynamic_cast<const Join*>(ev.node)) {
+        if (jn->tid < n_threads && !per_thread[jn->tid].empty()) {
+          auto& end_ev = per_thread[jn->tid].back();
+          if (dynamic_cast<const End*>(end_ev.node)) {
+            end_ev.y = ev.y;
+            node_y[end_ev.node] = ev.y;
           }
         }
       }
@@ -787,6 +809,34 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
             << ") -- (lane" << suffix << " |- " << *unl
             << ") -- (lane" << suffix << " |- " << *cn
             << ") -- (" << *cn << ");\n";
+      } else if (has_g_lane && ce.lock_var.empty() && ce.ordered_after
+                 && (ce.src1 || ce.src2)) {
+        // G-lane routing for unlock conflicts: each source routes based on thread.
+        // Cross-thread: src → g_predecessor → g_lane → conflict.
+        // Same-thread:  src → conflict (direct).
+        auto pred = get_name(ce.ordered_after);
+        auto conflict_tid_it = node_tid.find(ce.conflict_node);
+        size_t conflict_tid  = (conflict_tid_it != node_tid.end())
+                                 ? conflict_tid_it->second : SIZE_MAX;
+        auto emit_unlock_src = [&](const Node* src) {
+          auto s = get_name(src);
+          if (!s) return;
+          auto src_tid_it = node_tid.find(src);
+          size_t src_tid  = (src_tid_it != node_tid.end())
+                              ? src_tid_it->second : SIZE_MAX;
+          if (src_tid != conflict_tid && pred) {
+            const char* arc = (thread_x(src_tid) < g_x)
+                                ? "looseness=.5, out=320, in=210"
+                                : "looseness=.5, out=220, in=330";
+            f << "\\draw[conflict] (" << *s << ") -- (" << *pred
+              << ") to[" << arc << "] (laneG |- " << *pred
+              << ") -- (laneG |- " << *cn << ") -- (" << *cn << ");\n";
+          } else {
+            f << "\\draw[conflict] (" << *s << ") -- (" << *cn << ");\n";
+          }
+        };
+        if (ce.src1) emit_unlock_src(ce.src1);
+        if (ce.src2) emit_unlock_src(ce.src2);
       } else if (ce.src1 || ce.src2) {
         // Emit one conflict path per source.
         // Same-thread source → direct line along the thread lane.
@@ -804,9 +854,8 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
                               ? src_tid_it->second : SIZE_MAX;
 
           if (has_g_lane && src_tid != conflict_tid) {
-            // Cross-thread: src → End of src thread → (arc) → g → conflict
+            // Cross-thread (linear): src → End → arc → g lane → conflict
             const std::string& end_name = per_thread[src_tid].back().name;
-            // Match the PullPush push-arc direction (event left of g → out=320,in=210)
             const char* push_arc = (thread_x(src_tid) < g_x)
                                      ? "looseness=.5, out=320, in=210"
                                      : "looseness=.5, out=220, in=330";
@@ -814,8 +863,14 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
               << ") to[" << push_arc << "] (laneG |- " << end_name
               << ") -- (laneG |- " << *cn
               << ") -- (" << *cn << ");\n";
+          } else if (!has_g_lane && src_tid != conflict_tid
+                     && src_tid < per_thread.size()) {
+            // Cross-thread (branching): src → End of src thread → conflict
+            const std::string& end_name = per_thread[src_tid].back().name;
+            f << "\\draw[conflict] (" << *s << ") -- (" << end_name
+              << ") -- (" << *cn << ");\n";
           } else {
-            // Same thread (or no g lane): direct line
+            // Same thread: direct line
             f << "\\draw[conflict] (" << *s << ") -- (" << *cn << ");\n";
           }
         };

@@ -650,6 +650,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Track conflicting unlock nodes whose g_predecessor must be resolved after all threads.
   std::vector<std::pair<std::shared_ptr<graph::Unlock>, std::shared_ptr<Event>>> unlocks_g_predecessor_fixups;
 
+  // Track unlock conflict source fixups: (unlock node, conflict base carrying source events)
+  std::vector<std::pair<std::shared_ptr<graph::Unlock>, std::shared_ptr<ConflictBase>>> unlock_conflict_fixups;
+
   // Map from trace events to graph nodes
   std::unordered_map<std::shared_ptr<Event>, std::shared_ptr<graph::Node>> event_to_node;
 
@@ -764,6 +767,9 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           if (arg.g_predecessor) {
             unlocks_g_predecessor_fixups.push_back({node, arg.g_predecessor});
           }
+          if (arg.maybe_conflict) {
+            unlock_conflict_fixups.push_back({node, arg.maybe_conflict});
+          }
           last_unlock_per_lock[arg.lock_name] = node;
           link_in_program_order(tid, node);
           event_to_node[event] = node;
@@ -822,6 +828,16 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
     if (evt_b && event_to_node.count(evt_b)) src_b = event_to_node.at(evt_b);
     if (src_a || src_b)
       const_cast<graph::Conflict&>(*join_node->conflict).sources = {src_a, src_b};
+  }
+
+  // Fix up unlock conflict sources using the source events now that event_to_node is complete
+  for (auto& [unlock_node, cb] : unlock_conflict_fixups) {
+    auto [evt_a, evt_b] = cb->source_events();
+    std::shared_ptr<graph::Node> src_a, src_b;
+    if (evt_a && event_to_node.count(evt_a)) src_a = event_to_node.at(evt_a);
+    if (evt_b && event_to_node.count(evt_b)) src_b = event_to_node.at(evt_b);
+    if (src_a || src_b)
+      const_cast<graph::Conflict&>(*unlock_node->conflict).sources = {src_a, src_b};
   }
 
   // Fix up read nodes to point to their source write events
