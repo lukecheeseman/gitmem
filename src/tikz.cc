@@ -690,8 +690,12 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
         }
       } else if (auto* nd = dynamic_cast<const Unlock*>(ev.node)) {
         if (has_g_lane) {
-          // linear: unlock pulls + pushes g
-          f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
+          if (ev.is_conflict)
+            // conflicting unlock: push failed, g notifies thread of conflict
+            f << "\\draw[link oneway] (laneG |- " << ev.name << ") -- (" << ev.name << ");\n";
+          else
+            // successful unlock: pull + push
+            f << "\\PullPush{(" << ev.name << ")}{(laneG |- " << ev.name << ")}\n";
         } else {
           // branching: push from thread to lock lane only
           std::string suffix;
