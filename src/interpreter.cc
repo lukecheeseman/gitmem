@@ -306,13 +306,20 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     lock.owner = thread.tid;
 
+    // In the linear model all unlocks push to the same g, so a lock on any
+    // variable follows the most recent unlock of ANY variable (not just this
+    // one).  Use the global g-push predecessor when the per-lock one is absent.
+    auto lock_predecessor = (gctx.model->uses_global_lock_ordering()
+                             && !lock.last_unlock_event)
+        ? gctx.last_g_push_event : lock.last_unlock_event;
+
     if (auto conflict = gctx.model->on_lock(ctx, lock)) {
       verbose::out << (**conflict) << std::endl;
-      thread.trace.on_lock(var, lock.last_unlock_event, *conflict);
+      thread.trace.on_lock(var, lock_predecessor, *conflict);
       return termination::DataRace(*conflict);
     }
 
-    thread.trace.on_lock(var, lock.last_unlock_event);
+    thread.trace.on_lock(var, lock_predecessor);
     verbose::out << "Locked " << var << std::endl;
 
   } else if (s == lang::Unlock) {
@@ -332,7 +339,9 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
 
     if (auto conflict = gctx.model->on_unlock(ctx, lock)) {
       verbose::out << (**conflict) << std::endl;
-      thread.trace.on_unlock(var, *conflict);
+      auto g_pred = gctx.model->uses_global_lock_ordering()
+                    ? gctx.last_g_push_event : nullptr;
+      thread.trace.on_unlock(var, *conflict, g_pred);
       return termination::DataRace(*conflict);
     }
 
@@ -340,6 +349,7 @@ std::variant<int, TerminationStatus> Interpreter::run_statement(Node stmt, Threa
     lock.owner.reset();
 
     lock.last_unlock_event = thread.trace.on_unlock(var);
+    gctx.last_g_push_event = lock.last_unlock_event;
 
     verbose::out << "Unlocked " << var << std::endl;
 
@@ -633,6 +643,13 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // Track read nodes that need their source fixed up
   std::vector<std::pair<std::shared_ptr<graph::Read>, std::shared_ptr<Event>>> reads_to_fix;
 
+  // Track lock nodes whose ordered_after must be resolved after all threads
+  // are processed (the predecessor may come from another thread's trace).
+  std::vector<std::pair<std::shared_ptr<graph::Lock>, std::shared_ptr<Event>>> locks_ordered_after_fixups;
+
+  // Track conflicting unlock nodes whose g_predecessor must be resolved after all threads.
+  std::vector<std::pair<std::shared_ptr<graph::Unlock>, std::shared_ptr<Event>>> unlocks_g_predecessor_fixups;
+
   // Map from trace events to graph nodes
   std::unordered_map<std::shared_ptr<Event>, std::shared_ptr<graph::Node>> event_to_node;
 
@@ -726,31 +743,30 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           event_to_node[event] = node;
         },
         [&](const LockEvent& arg) {
-          // Link to the last unlock event using the event-to-node mapping
-          std::shared_ptr<graph::Node> ordered_after = nullptr;
-          if (arg.last_unlock_event && event_to_node.contains(arg.last_unlock_event)) {
-            ordered_after = event_to_node[arg.last_unlock_event];
-          }
-
           std::optional<graph::Conflict> conflict;
           if (arg.maybe_conflict) {
-            // Mark as conflicting with the lock name
             conflict = graph::Conflict(arg.lock_name);
           }
-          auto node = std::make_shared<graph::Lock>(arg.lock_name, ordered_after, conflict);
+          // ordered_after may reference another thread's unlock; defer resolution.
+          auto node = std::make_shared<graph::Lock>(arg.lock_name, nullptr, conflict);
+          if (arg.last_unlock_event) {
+            locks_ordered_after_fixups.push_back({node, arg.last_unlock_event});
+          }
           link_in_program_order(tid, node);
           event_to_node[event] = node;
         },
         [&](const UnlockEvent& arg) {
-          auto node = std::make_shared<graph::Unlock>(arg.lock_name);
+          std::optional<graph::Conflict> unlock_conflict;
+          if (arg.maybe_conflict) {
+            unlock_conflict = graph::Conflict(arg.maybe_conflict->object_name());
+          }
+          auto node = std::make_shared<graph::Unlock>(arg.lock_name, unlock_conflict);
+          if (arg.g_predecessor) {
+            unlocks_g_predecessor_fixups.push_back({node, arg.g_predecessor});
+          }
           last_unlock_per_lock[arg.lock_name] = node;
           link_in_program_order(tid, node);
           event_to_node[event] = node;
-
-          // Mark conflict if present
-          if (arg.maybe_conflict) {
-            // TODO: Visualize unlock conflicts
-          }
         },
         [&](const AssertEvent& arg) {
           auto node = std::make_shared<graph::Assertion>(arg.condition, arg.pass);
@@ -773,6 +789,21 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
         auto pending = std::make_shared<graph::Pending>("...");
         link_in_program_order(tid, pending);
       }
+    }
+  }
+
+  // Fix up lock ordered_after edges (predecessor may be in another thread's trace)
+  for (auto& [lock_node, unlock_event] : locks_ordered_after_fixups) {
+    if (event_to_node.contains(unlock_event)) {
+      const_cast<std::shared_ptr<const graph::Node>&>(lock_node->ordered_after) =
+          event_to_node[unlock_event];
+    }
+  }
+
+  // Fix up conflicting unlock g_predecessor edges (predecessor is in another thread).
+  for (auto& [unlock_node, pred_event] : unlocks_g_predecessor_fixups) {
+    if (event_to_node.contains(pred_event)) {
+      unlock_node->g_predecessor = event_to_node[pred_event];
     }
   }
 
