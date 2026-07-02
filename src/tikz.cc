@@ -91,19 +91,15 @@ static const char* FORMATTER = R"(
   \newcommand{\ThreadSyncEventFrom}[5]{%
     \fill ($(##2)+(0,##3)$) circle (0pt) coordinate (##4) node[##1 code] {##5};}
   \newcommand{\PullPush}[2]{
-    \ifdoublearrows
-      \path let \p1 = ##1, \p2 = ##2 in \pgfextra{%
-        \ifdim\x1<\x2
-          \draw[link oneway] ##2 to[looseness=.5, out=140, in=30] ##1;
-          \draw[link oneway] ##1 to[looseness=.5, out=320, in=210] ##2;
-        \else
-          \draw[link oneway] ##2 to[looseness=.5, out=40, in=150] ##1;
-          \draw[link oneway] ##1 to[looseness=.5, out=220, in=330] ##2;
-        \fi
-      };
-    \else
-      \draw[link both] ##1 -- ##2;
-    \fi
+    \path let \p1 = ##1, \p2 = ##2 in \pgfextra{%
+      \ifdim\x1<\x2
+        \draw[link oneway] ##2 to[looseness=.5, out=140, in=30] ##1;
+        \draw[link oneway] ##1 to[looseness=.5, out=320, in=210] ##2;
+      \else
+        \draw[link oneway] ##2 to[looseness=.5, out=40, in=150] ##1;
+        \draw[link oneway] ##1 to[looseness=.5, out=220, in=330] ##2;
+      \fi
+    };
   }
   \newcommand{\ConflictEvent}[2]{
     \node[regular polygon, regular polygon sides=8,
@@ -567,8 +563,6 @@ void TikzPrinter::print(const ExecutionGraph& g, const std::filesystem::path& pa
     << "\\usetikzlibrary{automata,shapes,decorations,arrows,calc,"
        "arrows.meta,fit,positioning,quotes,tikzmark,shadows}\n"
     << "\n"
-    << "\\newif\\ifdoublearrows\n"
-    << "\\doublearrowstrue\n"
     << FORMATTER
     << "\n\\begin{document}\n"
     << "\\begin{tikzpicture}[common timeline styles]\n"
