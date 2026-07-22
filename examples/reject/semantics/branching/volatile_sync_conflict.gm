@@ -1,0 +1,12 @@
+// The two volatile writes are releases with no intervening acquire, so they
+// establish no happens-before between the x writes: x races. Eager/linear catch
+// this at the write; lazy only reports conflicts on variables that are read, and
+// x is never read, so lazy accepts it.
+// expect branching-lazy: accept
+
+$t = spawn {
+  x = 1;
+  @v = 1;
+};
+x = 2;
+@v = 2;

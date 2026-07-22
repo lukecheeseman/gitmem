@@ -21,6 +21,8 @@ struct Start;
 struct End;
 struct Write;
 struct Read;
+struct VolatileWrite;
+struct VolatileRead;
 struct Spawn;
 struct Join;
 struct Lock;
@@ -45,6 +47,8 @@ struct Visitor {
   virtual void visitEnd(const End *) = 0;
   virtual void visitWrite(const Write *) = 0;
   virtual void visitRead(const Read *) = 0;
+  virtual void visitVolatileWrite(const VolatileWrite *) = 0;
+  virtual void visitVolatileRead(const VolatileRead *) = 0;
   virtual void visitSpawn(const Spawn *) = 0;
   virtual void visitJoin(const Join *) = 0;
   virtual void visitLock(const Lock *) = 0;
@@ -106,6 +110,31 @@ struct Read : Node {
   }
 
   void accept(Visitor *v) const override { v->visitRead(this); }
+};
+
+// A volatile write is an ordinary write plus the write->write synchronisation
+// order: `sync_predecessor` is the prior volatile write (release) this one
+// chains onto (null for the first write to the volatile).
+struct VolatileWrite : Write {
+  std::shared_ptr<const Node> sync_predecessor = nullptr;
+
+  VolatileWrite(const std::string var, const size_t value, const size_t id)
+      : Write(var, value, id) {}
+
+  void accept(Visitor *v) const override { v->visitVolatileWrite(this); }
+};
+
+// A volatile read is an ordinary read whose edge to the source write is a
+// synchronisation (acquire) edge rather than a plain reads-from edge.
+struct VolatileRead : Read {
+  VolatileRead(const std::string var, const size_t value, const size_t id,
+               const std::shared_ptr<const Node> source)
+      : Read(var, value, id, source) {}
+
+  VolatileRead(const std::string var, const size_t id, Conflict conflict)
+      : Read(var, id, std::move(conflict)) {}
+
+  void accept(Visitor *v) const override { v->visitVolatileRead(this); }
 };
 
 struct Spawn : Node {

@@ -137,6 +137,42 @@ void GraphvizPrinter::visitRead(const Read *n) {
   }
 }
 
+void GraphvizPrinter::visitVolatileWrite(const VolatileWrite *n) {
+  emitNode(n, "W" + n->var + " = " + to_string(n->value));
+  emitProgramOrderEdge(n, n->next.get());
+  visitProgramOrder(n->next.get());
+  // write->write synchronisation order (release chain).
+  if (n->sync_predecessor)
+    emitSyncEdge(n->sync_predecessor.get(), n);
+}
+
+void GraphvizPrinter::visitVolatileRead(const VolatileRead *n) {
+  std::string label = "R" + n->var + " = ";
+
+  std::visit(overloaded{
+    [&](const Read::SuccessfulRead& success) {
+      label += to_string(success.value);
+    },
+    [&](const Conflict& conflict) {
+      label += "conflict";
+    }
+  }, n->read_result);
+
+  emitNode(n, label);
+  emitProgramOrderEdge(n, n->next.get());
+  visitProgramOrder(n->next.get());
+
+  if (auto* conflict = std::get_if<Conflict>(&n->read_result)) {
+    emitConflict(n, *conflict);
+  } else {
+    auto& success = std::get<Read::SuccessfulRead>(n->read_result);
+    // write->read is an acquire: a synchronisation edge, not a reads-from edge.
+    if (success.source) {
+      emitSyncEdge(success.source.get(), n);
+    }
+  }
+}
+
 void GraphvizPrinter::visitSpawn(const Spawn *n) {
   emitNode(n, "Spawn " + std::to_string(n->tid));
   emitProgramOrderEdge(n, n->next.get());

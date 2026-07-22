@@ -1,5 +1,6 @@
 #include "base_memory_model.hh"
 #include "overloaded.hh"
+#include <stdexcept>
 #include "branching/eager/memory_model.hh"
 #include "branching/lazy/memory_model.hh"
 
@@ -120,6 +121,54 @@ BranchingMemoryModelBase::on_unlock(ThreadContext &thread, Lock &lock) {
   return std::nullopt;
 }
 
+VolatileState& get_store(Volatile& v) {
+  return static_cast<VolatileState&>(*v.sync);
+}
+
+std::optional<std::shared_ptr<ConflictBase>>
+BranchingMemoryModelBase::on_volatile_read(ThreadContext &thread, Volatile &v) {
+  auto& store = get_store(thread);
+  store.commit_staging();
+
+  // Acquire: merge the current release so we observe it and everything that
+  // happened-before it. May conflict on piggybacked non-volatile state.
+  VolatileState& vstate = get_store(v);
+  if (vstate.commit != nullptr) {
+    if (std::optional<Conflict> conflict = store.merge_with_commit(vstate.commit)) {
+      return std::make_shared<BranchingConflict>(*conflict);
+    }
+  }
+
+  // The value (with its writer as provenance) lives on the Volatile object and
+  // is read there by the interpreter -- @v is not versioned.
+  return std::nullopt;
+}
+
+std::optional<std::shared_ptr<ConflictBase>>
+BranchingMemoryModelBase::on_volatile_write(ThreadContext &thread, Volatile &v,
+                                            ValueWithSource value) {
+  auto& store = get_store(thread);
+  store.commit_staging();
+
+  // Release: absorb the previous release first (so the ordinary state is a
+  // linear chain, never diverging on @v); this merge may still conflict on
+  // piggybacked non-volatile state.
+  VolatileState& vstate = get_store(v);
+  if (vstate.commit != nullptr) {
+    if (std::optional<Conflict> conflict = store.merge_with_commit(vstate.commit)) {
+      return std::make_shared<BranchingConflict>(*conflict);
+    }
+  }
+
+  // The thread's current head is the release point a later acquire merges. The
+  // volatile's value lives on the object, not in a commit -- @v is not
+  // versioned; `value` carries the write event as provenance for reads.
+  vstate.commit = store.get_head();
+  v.value = value;
+
+  return std::nullopt;
+}
+
 std::string BranchingMemoryModelBase::build_revision_graph_dot(
     const std::vector<const ThreadSyncState*>& thread_states) const {
 
@@ -142,6 +191,8 @@ bool BranchingMemoryModelBase::is_scheduling_point(SyncOperation op) const {
     case SyncOperation::Lock:
     case SyncOperation::Unlock:
     case SyncOperation::Join:
+    case SyncOperation::VolatileRead:
+    case SyncOperation::VolatileWrite:
       return true;
     case SyncOperation::Spawn:
     case SyncOperation::Start:
