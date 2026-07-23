@@ -196,7 +196,7 @@ LinearMemoryModel::on_unlock(ThreadContext &thread, Lock &) {
 std::optional<std::shared_ptr<ConflictBase>>
 LinearMemoryModel::on_volatile_read(ThreadContext &thread, Volatile &v) {
   auto& store = get_store(thread);
-  if (auto conflict = pullpush(store))
+  if (auto conflict = pull(store))
     return std::make_shared<LinearConflict>(std::move(*conflict));
 
   return std::nullopt;
