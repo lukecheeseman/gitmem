@@ -2,6 +2,7 @@
 
 #include "execution_state.hh"
 #include "memory_model.hh"
+#include "render.hh"
 
 namespace gitmem {
 
@@ -119,9 +120,8 @@ std::ostream& operator<<(std::ostream& os, const Thread& thread) {
       os << "   ";
     }
 
-    // This should be somewhere else
     // Fix indentation of nested blocks
-    auto s = std::string(stmt->location().view());
+    auto s = lang::render(stmt);
     s = std::regex_replace(s, std::regex("\n"), "\n   ");
     os << s << ";" << std::endl;
 

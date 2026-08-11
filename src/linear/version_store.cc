@@ -79,11 +79,14 @@ std::optional<Conflict> GlobalVersionStore::check_conflicts(
     if (!value.source_event)
       throw std::logic_error("missing source event for conflicting write");
 
-    auto* write = std::get_if<WriteEvent>(&value.source_event->data);
-    if (!write)
-      throw std::logic_error("conflicting source event is not a WriteEvent");
+    if (auto* write = std::get_if<WriteEvent>(&value.source_event->data))
+      return write->location;
+    // Volatile writes can race (write-write with no happens-before), so a
+    // volatile write may legitimately be party to a conflict.
+    if (auto* vwrite = std::get_if<VolatileWriteEvent>(&value.source_event->data))
+      return vwrite->location;
 
-    return write->location;
+    throw std::logic_error("conflicting source event is not a write");
   };
 
   for (const auto &[obj, local_value] : changes) {

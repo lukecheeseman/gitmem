@@ -1,8 +1,6 @@
-// The two volatile writes are releases with no intervening acquire, so they
-// establish no happens-before between the x writes: x races. Eager/linear catch
-// this at the write; lazy only reports conflicts on variables that are read, and
-// x is never read, so lazy accepts it.
-// expect branching-lazy: accept
+// The two volatile writes to @v are concurrent with no happens-before between
+// them (write->write is not a synchronizes-with edge, only write->read is), so
+// they race -- and so do the piggybacked x writes. All models detect it.
 
 $t = spawn {
   x = 1;

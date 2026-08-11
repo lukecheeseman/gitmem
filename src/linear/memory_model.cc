@@ -207,16 +207,17 @@ LinearMemoryModel::on_volatile_write(ThreadContext &thread, Volatile &v,
                                      ValueWithSource value) {
   auto& store = get_store(thread);
 
-  // Release: publish the thread's ordinary staged writes through g so a later
-  // acquire sees them. May report a conflict on those *non-volatile* changes;
-  // never on @v itself -- @v is not versioned.
-  if (auto conflict = pull(store))
+  // Version @v in g, in addition to the atomic value on the object. Then
+  // publish, checking for conflicts at the current base: a concurrent write to
+  // @v -- one not happens-before ours -- is caught here as a write-write race
+  // (write->write is not a synchronizes-with edge, only write->read is). We
+  // must NOT pull first: that would absorb the concurrent write and hide it.
+  store.stage(v.name, value);
+  if (auto conflict = pullpush(store))
     return std::make_shared<LinearConflict>(std::move(*conflict));
-  push(store);
 
-  // The volatile's value lives on the object, not the versioned store. `value`
-  // carries the write event as its source so a later volatile read observes it
-  // as the writer synchronized with.
+  // The single current value (with provenance) lives on the object; the g
+  // version exists only to detect the race.
   v.value = value;
 
   return std::nullopt;

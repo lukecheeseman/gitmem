@@ -8,6 +8,7 @@
 #include "interpreter.hh"
 #include "memory_model.hh"
 #include "overloaded.hh"
+#include "render.hh"
 
 namespace gitmem {
 
@@ -122,7 +123,7 @@ std::optional<std::string> Interpreter::pending_statement(ThreadID tid) const {
     return std::nullopt;
   }
 
-  return std::string(thread.block->at(thread.pc)->location().view());
+  return lang::render(thread.block->at(thread.pc));
 }
 
 bool Interpreter::same_state_as(const GlobalContext& other) const {
@@ -143,14 +144,14 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
   auto e = expr / lang::Expr;
   if (e == lang::Reg) {
     // It is invalid to read a previously unwritten value
-    auto var = std::string(expr->location().view());
+    auto var = std::string(e->location().view());
     if (ctx.locals.contains(var)) {
       return ctx.locals[var];
     } else {
       return termination::UnassignedRead(var);
     }
   } else if (e == lang::Volatile) {
-    auto var = std::string(expr->location().view());
+    auto var = std::string(e->location().view());
 
     // A volatile read is an acquire: synchronize (the model merges/pulls the
     // writer's ordinary state, and may race on that piggybacked non-volatile
@@ -172,7 +173,7 @@ Interpreter::evaluate_expression(trieste::Node expr, Thread& thread) {
     return vol.value->value;
 
   } else if (e == lang::Var) {
-    auto var = std::string(expr->location().view());
+    auto var = std::string(e->location().view());
 
     auto result = gctx.model->read(ctx, var);
 
@@ -888,7 +889,7 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
       if (thread.pc < thread.block->size()) {
         // Thread is stuck waiting at a specific statement
         trieste::Node stmt = thread.block->at(thread.pc);
-        auto pending = std::make_shared<graph::Pending>(std::string(stmt->location().view()));
+        auto pending = std::make_shared<graph::Pending>(lang::render(stmt));
         link_in_program_order(tid, pending);
       } else {
         // Thread has finished all statements but hasn't terminated yet
