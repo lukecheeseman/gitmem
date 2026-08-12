@@ -723,6 +723,10 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
   // write) must be resolved after all threads -- it may be another thread's.
   std::vector<std::pair<std::shared_ptr<graph::VolatileWrite>, std::shared_ptr<Event>>> volatile_write_sync_fixups;
 
+  // Track conflicting volatile write nodes: (node, conflict base carrying the
+  // racing source events).
+  std::vector<std::pair<std::shared_ptr<graph::VolatileWrite>, std::shared_ptr<ConflictBase>>> volatile_write_conflict_fixups;
+
   // Track conflicting unlock nodes whose g_predecessor must be resolved after all threads.
   std::vector<std::pair<std::shared_ptr<graph::Unlock>, std::shared_ptr<Event>>> unlocks_g_predecessor_fixups;
 
@@ -807,6 +811,11 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
           // write->write sync order: link to the prior volatile write (release).
           if (arg.sync_predecessor)
             volatile_write_sync_fixups.push_back({node, arg.sync_predecessor});
+          // A volatile write can race (write-write); render it as an error.
+          if (arg.maybe_conflict) {
+            node->conflict = graph::Conflict(arg.maybe_conflict->object_name());
+            volatile_write_conflict_fixups.push_back({node, arg.maybe_conflict});
+          }
           link_in_program_order(tid, node);
           event_to_node[event] = node;
         },
@@ -946,6 +955,16 @@ graph::ExecutionGraph Interpreter::build_execution_graph_from_traces() {
     if (evt_b && event_to_node.count(evt_b)) src_b = event_to_node.at(evt_b);
     if (src_a || src_b)
       const_cast<graph::Conflict&>(*unlock_node->conflict).sources = {src_a, src_b};
+  }
+
+  // Fix up conflicting volatile write sources (the two racing writes).
+  for (auto& [vwrite_node, cb] : volatile_write_conflict_fixups) {
+    auto [evt_a, evt_b] = cb->source_events();
+    std::shared_ptr<graph::Node> src_a, src_b;
+    if (evt_a && event_to_node.count(evt_a)) src_a = event_to_node.at(evt_a);
+    if (evt_b && event_to_node.count(evt_b)) src_b = event_to_node.at(evt_b);
+    if (src_a || src_b)
+      vwrite_node->conflict->sources = {src_a, src_b};
   }
 
   // Fix up read nodes to point to their source write events

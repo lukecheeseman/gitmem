@@ -117,6 +117,9 @@ struct Read : Node {
 // chains onto (null for the first write to the volatile).
 struct VolatileWrite : Write {
   std::shared_ptr<const Node> sync_predecessor = nullptr;
+  // A volatile write can race (write-write with no happens-before); when it
+  // does, this holds the conflict so the node renders as an error.
+  std::optional<Conflict> conflict = std::nullopt;
 
   VolatileWrite(const std::string var, const size_t value, const size_t id)
       : Write(var, value, id) {}

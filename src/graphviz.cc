@@ -62,12 +62,13 @@ void GraphvizPrinter::emitConflict(const Node *n, const Conflict &conflict) {
   emitFillColor(n, "red");
   // emitShape(n, "doubleoctagon");
 
-  // Only draw conflict edges if we have actual source nodes
+  // Only draw conflict edges to actual *other* source nodes (a racing write is
+  // often one of the two sources itself; don't draw a self-loop).
   auto [s1, s2] = conflict.sources;
-  if (s1) {
+  if (s1 && s1.get() != n) {
     emitConflictEdge(n, s1.get());
   }
-  if (s2) {
+  if (s2 && s2.get() != n) {
     emitConflictEdge(n, s2.get());
   }
 }
@@ -144,6 +145,9 @@ void GraphvizPrinter::visitVolatileWrite(const VolatileWrite *n) {
   // write->write synchronisation order (release chain).
   if (n->sync_predecessor)
     emitSyncEdge(n->sync_predecessor.get(), n);
+  // A concurrent write-write race renders the node as an error.
+  if (n->conflict)
+    emitConflict(n, n->conflict.value());
 }
 
 void GraphvizPrinter::visitVolatileRead(const VolatileRead *n) {
